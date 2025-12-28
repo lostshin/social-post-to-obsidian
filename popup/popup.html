@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Social Post to Obsidian</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Social Post to Obsidian</h1>
+
+    <div class="form-group">
+      <label for="apiKey">Obsidian API Key</label>
+      <input type="password" id="apiKey" placeholder="輸入 Local REST API Key">
+      <small>在 Obsidian 設定 → Local REST API 中取得</small>
+    </div>
+
+    <div class="form-group">
+      <label for="port">API Port</label>
+      <input type="number" id="port" value="27123" min="1" max="65535">
+      <small>預設 27123 (HTTP) 或 27124 (HTTPS)</small>
+    </div>
+
+    <div class="form-group">
+      <label for="basePath">存檔路徑</label>
+      <input type="text" id="basePath" value="個人創作/社群推文" placeholder="資料夾路徑">
+      <small>相對於 Vault 根目錄的路徑</small>
+    </div>
+
+    <div class="button-group">
+      <button id="testBtn" class="secondary">測試連線</button>
+      <button id="saveBtn" class="primary">儲存設定</button>
+    </div>
+
+    <div id="status" class="status"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
