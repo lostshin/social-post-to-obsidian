@@ -44,7 +44,10 @@ var SP2O = (function () {
     }
     el.style.background = ok ? '#1e7e34' : '#b02a37';
     el.textContent = (ok ? '✓ ' : '✕ ') + text;
-    requestAnimationFrame(() => { el.style.opacity = '1'; });
+    // 強制 reflow 讓 transition 生效；不用 rAF（背景分頁會延後執行，
+    // 導致淡出比淡入先跑、toast 卡住不消失）
+    void el.offsetWidth;
+    el.style.opacity = '1';
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { el.style.opacity = '0'; }, 3500);
   }

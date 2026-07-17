@@ -324,12 +324,12 @@ ${quotedLines}
 
 // 擷取標題（首句，最多 30 字）
 function extractTitle(content) {
-  // 移除換行，取前 30 字
-  const firstLine = content.replace(/\n/g, ' ').trim();
-  const title = firstLine.substring(0, 30);
+  // 移除換行後以 code point 切割，避免把 emoji 的 surrogate pair 切成半個字
+  const chars = Array.from(content.replace(/\n/g, ' ').trim());
+  const title = chars.slice(0, 30).join('');
 
   // 如果有截斷，加上 ...
-  return firstLine.length > 30 ? title + '...' : title;
+  return chars.length > 30 ? title + '...' : title;
 }
 
 // 產生檔案名稱
@@ -340,10 +340,10 @@ function generateFilename(data) {
   const hours = String(date.getHours()).padStart(2, '0');
   const minutes = String(date.getMinutes()).padStart(2, '0');
 
-  // 取首 25 字作為摘要，移除不合法的檔名字元
-  const summary = data.content
-    .replace(/\n/g, ' ')
-    .substring(0, 25)
+  // 取首 25 字作為摘要（以 code point 切割避免切斷 emoji），移除不合法的檔名字元
+  const summary = Array.from(data.content.replace(/\n/g, ' '))
+    .slice(0, 25)
+    .join('')
     .replace(/[\\/:*?"<>|]/g, '')
     .trim();
 
