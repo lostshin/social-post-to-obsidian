@@ -5,6 +5,11 @@ var SP2O = (function () {
 
   const LOG = '[Social Post to Obsidian]';
 
+  // 啟動時印出版本，方便確認此分頁載入的是哪一版（重載擴充功能後需重新整理分頁）
+  try {
+    console.log(LOG, 'content script v' + chrome.runtime.getManifest().version + ' 已載入');
+  } catch (e) { /* 測試環境或 context 失效時略過 */ }
+
   // 發送訊息到 background（帶重試機制，處理 service worker 尚未喚醒的情況）
   function sendMessage(message, maxRetries = 3) {
     let retries = 0;

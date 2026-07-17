@@ -167,6 +167,7 @@ saveBtn.addEventListener('click', saveSettings);
 testBtn.addEventListener('click', testConnection);
 
 // 初始化
+document.getElementById('version').textContent = 'v' + chrome.runtime.getManifest().version;
 loadSettings();
 checkConnection();
 renderQueueInfo();

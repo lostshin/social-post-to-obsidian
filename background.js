@@ -1,5 +1,10 @@
 // Service Worker - 處理貼文存檔
 
+// 啟動時印出版本，方便在 SW console 確認載入的版本
+try {
+  console.log('[Social Post to Obsidian] background v' + chrome.runtime.getManifest().version + ' 已啟動');
+} catch (e) { /* 測試環境略過 */ }
+
 // 監聽來自 content script 的訊息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const tabId = sender.tab ? sender.tab.id : null;
