@@ -57,7 +57,8 @@ var SP2O = (function () {
   function handleInvalidated() {
     if (invalidatedNotified) return;
     invalidatedNotified = true;
-    console.warn(LOG, '擴充功能已重新載入，此分頁的舊指令碼已失效，請重新整理頁面');
+    // 用 log 而非 warn：warn 會被收進擴充功能錯誤頁，這是預期情況不該佔版面
+    console.log(LOG, '擴充功能已重新載入，此分頁的舊指令碼已失效，請重新整理頁面');
     showToast('擴充功能已更新，請重新整理此頁面以繼續存檔', false);
   }
 

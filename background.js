@@ -65,7 +65,8 @@ async function handleSaveDraft(data) {
     // 草稿失敗不跳通知（打字中會很吵）；正式貼文有離線佇列保底
     // 連線失敗屬預期情況（Obsidian 沒開），用 warn 避免在擴充功能頁堆紅色錯誤
     if (isConnectionError(error)) {
-      console.warn('[Social Post to Obsidian] Draft save skipped (Obsidian 未連線)');
+      // 用 log 而非 warn：warn 會被收進擴充功能錯誤頁，Obsidian 沒開是預期情況
+      console.log('[Social Post to Obsidian] Draft save skipped (Obsidian 未連線)');
     } else {
       console.error('[Social Post to Obsidian] Draft save failed:', error);
     }
