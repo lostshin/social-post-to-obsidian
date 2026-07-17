@@ -150,11 +150,33 @@
     };
   }
 
+  // 發送訊息到 background（帶重試機制）
+  function sendMessageWithRetry(message, maxRetries = 3) {
+    let retries = 0;
+
+    function trySend() {
+      chrome.runtime.sendMessage(message, (response) => {
+        if (chrome.runtime.lastError) {
+          console.warn('[Social Post to Obsidian] Threads: 發送失敗，嘗試重試...', chrome.runtime.lastError.message);
+          retries++;
+          if (retries < maxRetries) {
+            // 等待一下再重試，讓 service worker 有時間啟動
+            setTimeout(trySend, 500);
+          } else {
+            console.error('[Social Post to Obsidian] Threads: 發送失敗，已達最大重試次數');
+          }
+        }
+      });
+    }
+
+    trySend();
+  }
+
   // 發送草稿到 background
   function sendDraft(content) {
     if (!content || content.trim() === '') return;
 
-    chrome.runtime.sendMessage({
+    sendMessageWithRetry({
       type: 'SAVE_DRAFT',
       data: {
         content: content.trim(),
@@ -344,16 +366,11 @@
 
   // 發送到 background
   function sendToBackground(postData) {
-    try {
-      chrome.runtime.sendMessage({
-        type: 'PUBLISH_DRAFT',
-        data: postData
-      });
-      console.log('[Social Post to Obsidian] Threads: 已發送貼文內容', postData.url);
-    } catch (error) {
-      console.error('[Social Post to Obsidian] Threads: 發送失敗，請刷新頁面', error);
-      alert('Social Post to Obsidian: 請刷新頁面後再試一次（擴充功能已更新）');
-    }
+    sendMessageWithRetry({
+      type: 'PUBLISH_DRAFT',
+      data: postData
+    });
+    console.log('[Social Post to Obsidian] Threads: 已發送貼文內容', postData.url);
   }
 
   // 設定草稿自動存檔監聽
