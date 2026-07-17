@@ -51,7 +51,9 @@ async function testConnection() {
   showStatus('正在連線...', 'info');
 
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/`, {
+    // 27124 是 Local REST API 的 HTTPS 埠
+    const protocol = port === 27124 ? 'https' : 'http';
+    const response = await fetch(`${protocol}://127.0.0.1:${port}/`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${apiKey}`

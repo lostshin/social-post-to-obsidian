@@ -40,11 +40,11 @@
     const text = element.textContent?.trim().toLowerCase() || '';
     const ariaLabel = element.getAttribute('aria-label')?.trim().toLowerCase() || '';
 
-    // 精確匹配發文按鈕文字（多語言支援）
+    // 精確匹配發文按鈕文字（data-testid 才是主要偵測，這裡只是備援）
+    // 不放 'reply'、'貼文' 等泛用詞，避免點別處按鈕時誤存
     const exactKeywords = [
       'post', 'post all',
-      '發佈', '全部發佈', '發布', '全部發布',
-      '貼文', '發文', 'tweet', 'reply'
+      '發佈', '全部發佈', '發布', '全部發布'
     ];
 
     const isMatch = exactKeywords.some(keyword =>
@@ -79,7 +79,11 @@
         text = input.textContent.trim();
       }
 
-      // 過濾：有內容、不是 placeholder、不重複
+      // 過濾 placeholder：直接比對編輯器內 placeholder 元素的文字（不分語言）
+      const placeholderEl = input.querySelector('.public-DraftEditorPlaceholder-root');
+      if (placeholderEl && text === placeholderEl.innerText?.trim()) {
+        text = '';
+      }
       const isPlaceholder = text === '有什麼新鮮事？' || text === "What's happening?" || text === '';
 
       if (text && !isPlaceholder && text !== '\n' && !seen.has(text)) {

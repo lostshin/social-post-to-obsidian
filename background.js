@@ -4,21 +4,40 @@
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.type) {
     case 'SAVE_DRAFT':
-      handleSaveDraft(message.data);
+      enqueue(message.data.platform, () => handleSaveDraft(message.data));
       break;
     case 'PUBLISH_DRAFT':
-      handlePublishDraft(message.data);
+      enqueue(message.data.platform, () => handlePublishDraft(message.data));
       break;
     case 'SAVE_POST':
-      handleSavePost(message.data);
+      enqueue(message.data.platform, () => handleSavePost(message.data));
       break;
   }
-  return true;
+
+  // 同步回應，避免 content script 因 port closed 錯誤而重送訊息
+  sendResponse({ ok: true });
 });
+
+// 每個平台一條序列，確保草稿存檔與發佈依收到的順序執行
+const taskChains = {};
+// 記錄每平台最後發佈的貼文時間，用來丟棄遲到的舊草稿
+const lastPublishTimestamp = {};
+
+function enqueue(platform, task) {
+  const key = platform || 'default';
+  taskChains[key] = (taskChains[key] || Promise.resolve()).then(task).catch(() => {});
+}
 
 // 處理草稿存檔
 async function handleSaveDraft(data) {
   try {
+    // 發佈後才送達的舊草稿直接丟棄，避免已刪除的草稿檔又被寫回
+    const publishedAt = lastPublishTimestamp[data.platform];
+    if (publishedAt && data.timestamp <= publishedAt) {
+      console.log('[Social Post to Obsidian] 忽略發佈前的舊草稿');
+      return;
+    }
+
     const settings = await chrome.storage.local.get(['apiKey', 'port', 'basePath']);
 
     if (!settings.apiKey) {
@@ -44,6 +63,8 @@ async function handleSaveDraft(data) {
 // 處理發佈（刪除草稿 + 存正式檔案）
 async function handlePublishDraft(data) {
   try {
+    lastPublishTimestamp[data.platform] = data.timestamp;
+
     const settings = await chrome.storage.local.get(['apiKey', 'port', 'basePath']);
 
     if (!settings.apiKey) {
@@ -74,16 +95,20 @@ async function handlePublishDraft(data) {
 
 // 刪除草稿檔案
 async function deleteDraft(filepath, apiKey, port) {
-  const url = `http://127.0.0.1:${port}/vault/${encodeURIComponent(filepath)}`;
+  const url = `${apiBase(port)}/vault/${encodeURIComponent(filepath)}`;
 
   try {
-    await fetch(url, {
+    const response = await fetch(url, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${apiKey}` }
     });
-    console.log('[Social Post to Obsidian] Draft deleted:', filepath);
+    // 404（草稿不存在）也沒關係，其他錯誤記下來
+    if (!response.ok && response.status !== 404) {
+      console.warn('[Social Post to Obsidian] Draft delete failed:', response.status);
+    } else {
+      console.log('[Social Post to Obsidian] Draft deleted:', filepath);
+    }
   } catch (error) {
-    // 草稿不存在也沒關係，靜默處理
     console.log('[Social Post to Obsidian] Draft delete skipped:', error.message);
   }
 }
@@ -198,6 +223,9 @@ function extractTitle(content) {
 function generateFilename(data) {
   const date = new Date(data.timestamp);
   const dateStr = formatDate(date);
+  // 加上時分，避免同一天發相似開頭的貼文時檔名互相覆蓋
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
 
   // 取首 25 字作為摘要，移除不合法的檔名字元
   const summary = data.content
@@ -206,7 +234,7 @@ function generateFilename(data) {
     .replace(/[\\/:*?"<>|]/g, '')
     .trim();
 
-  return `${dateStr}_${summary}.md`;
+  return `${dateStr}_${hours}${minutes}_${summary}.md`;
 }
 
 // 格式化日期時間 (YYYY-MM-DD HH:mm)
@@ -233,15 +261,21 @@ function formatDate(date) {
 // 跳脫 YAML 特殊字元
 function escapeYaml(str) {
   // 如果包含冒號、引號等特殊字元，用雙引號包起來
-  if (/[:\[\]{}#&*!|>'"%@`]/.test(str) || str.includes('\n')) {
-    return `"${str.replace(/"/g, '\\"')}"`;
+  if (/[:\[\]{}#&*!|>'"%@`\\]/.test(str) || str.includes('\n')) {
+    return `"${str.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
   }
   return str;
 }
 
+// 依 port 決定協定（27124 是 Local REST API 的 HTTPS 埠）
+function apiBase(port) {
+  const protocol = Number(port) === 27124 ? 'https' : 'http';
+  return `${protocol}://127.0.0.1:${port}`;
+}
+
 // 儲存到 Obsidian
 async function saveToObsidian(content, filename, apiKey, port) {
-  const url = `http://127.0.0.1:${port}/vault/${encodeURIComponent(filename)}`;
+  const url = `${apiBase(port)}/vault/${encodeURIComponent(filename)}`;
 
   const response = await fetch(url, {
     method: 'PUT',

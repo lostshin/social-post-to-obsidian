@@ -63,8 +63,9 @@
 
   // 取得輸入框的文字內容（支援串文多則）
   function getTextContent() {
-    // 找所有輸入框（串文會有多個）
-    const inputs = document.querySelectorAll('[contenteditable="true"], [role="textbox"], textarea');
+    // 限定在發文 dialog 內找輸入框，避免抓到搜尋框等其他欄位
+    const root = document.querySelector('[role="dialog"]') || document;
+    const inputs = root.querySelectorAll('[contenteditable="true"], [role="textbox"], textarea');
 
     if (!inputs || inputs.length === 0) {
       console.log('[Social Post to Obsidian] Threads: 找不到輸入框');
@@ -383,6 +384,9 @@
       const inputs = document.querySelectorAll('[contenteditable="true"], [role="textbox"], textarea');
 
       inputs.forEach(input => {
+        // 只監聽發文 dialog 內的輸入框，避免搜尋框的文字被存成草稿
+        if (!input.closest('[role="dialog"]')) return;
+
         if (!attachedInputs.has(input)) {
           attachedInputs.add(input);
 
