@@ -63,6 +63,11 @@ async function handleSaveDraft(data, tabId) {
 
     console.log('[Social Post to Obsidian] Draft saved:', filename);
     sendDraftStatus(tabId, true, `草稿已暫存 ${formatDateTime(data.timestamp).slice(-5)}`);
+
+    // 記錄草稿狀態供 popup 顯示（每平台一個 key，避免共用物件的讀寫競態）
+    await chrome.storage.local.set({
+      ['draftStatus_' + data.platform]: { filename, path: fullPath, savedAt: data.timestamp }
+    });
   } catch (error) {
     // 草稿失敗不跳系統通知（打字中會很吵）；正式貼文有離線佇列保底
     if (isConnectionError(error)) {
@@ -102,6 +107,7 @@ async function handlePublishDraft(data, tabId) {
     // 1. 刪除草稿
     const draftPath = `${basePath}/_草稿_${platformName}.md`;
     await deleteDraft(draftPath, settings.apiKey, settings.port || 27123);
+    await chrome.storage.local.remove('draftStatus_' + data.platform);
 
     // 2. 存正式檔案
     const markdown = generateMarkdown(data);

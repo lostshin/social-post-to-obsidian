@@ -8,6 +8,8 @@ const statusDiv = document.getElementById('status');
 const connDot = document.getElementById('connDot');
 const connText = document.getElementById('connText');
 const queueInfo = document.getElementById('queueInfo');
+const draftSection = document.getElementById('draftSection');
+const draftList = document.getElementById('draftList');
 const recentSection = document.getElementById('recentSection');
 const recentList = document.getElementById('recentList');
 
@@ -124,13 +126,57 @@ async function checkConnection() {
 // 顯示待補存佇列數量
 async function renderQueueInfo() {
   const { offlineQueue = [] } = await chrome.storage.local.get('offlineQueue');
+  queueInfo.hidden = offlineQueue.length === 0;
   if (offlineQueue.length > 0) {
-    queueInfo.hidden = false;
     queueInfo.textContent = `待補存 ${offlineQueue.length} 則（Obsidian 連線後自動補存）`;
   }
 }
 
-// 顯示最近儲存清單，點擊可在 Obsidian 開啟
+// 格式化時間 (MM/DD HH:mm)
+function formatTime(iso) {
+  const t = new Date(iso);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(t.getMonth() + 1)}/${pad(t.getDate())} ${pad(t.getHours())}:${pad(t.getMinutes())}`;
+}
+
+// 建立一列清單項目：可點開 Obsidian 的檔名 + 說明文字
+function buildListItem(filename, path, metaText) {
+  const li = document.createElement('li');
+
+  const link = document.createElement('a');
+  link.href = '#';
+  link.textContent = filename;
+  link.title = '在 Obsidian 中開啟';
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    chrome.tabs.create({ url: 'obsidian://open?file=' + encodeURIComponent(path) });
+  });
+
+  const meta = document.createElement('small');
+  meta.textContent = metaText;
+
+  li.appendChild(link);
+  li.appendChild(meta);
+  return li;
+}
+
+// 顯示未發佈草稿（打字中自動暫存的內容）
+async function renderDrafts() {
+  const stored = await chrome.storage.local.get(['draftStatus_x', 'draftStatus_threads']);
+  const drafts = [
+    ['Twitter/X', stored.draftStatus_x],
+    ['Threads', stored.draftStatus_threads]
+  ].filter(([, d]) => d);
+
+  draftSection.hidden = drafts.length === 0;
+  draftList.textContent = '';
+
+  for (const [platformName, d] of drafts) {
+    draftList.appendChild(buildListItem(d.filename, d.path, `${platformName} · 最後暫存 ${formatTime(d.savedAt)}`));
+  }
+}
+
+// 顯示最近儲存清單（已發佈的貼文），點擊可在 Obsidian 開啟
 async function renderRecent() {
   const { recentSaves = [] } = await chrome.storage.local.get('recentSaves');
   if (recentSaves.length === 0) return;
@@ -139,28 +185,18 @@ async function renderRecent() {
   recentList.textContent = '';
 
   for (const item of recentSaves) {
-    const li = document.createElement('li');
-
-    const link = document.createElement('a');
-    link.href = '#';
-    link.textContent = item.filename;
-    link.title = '在 Obsidian 中開啟';
-    link.addEventListener('click', (e) => {
-      e.preventDefault();
-      chrome.tabs.create({ url: 'obsidian://open?file=' + encodeURIComponent(item.path) });
-    });
-
-    const meta = document.createElement('small');
     const platformName = item.platform === 'x' ? 'Twitter/X' : 'Threads';
-    const time = new Date(item.savedAt);
-    const timeStr = `${String(time.getMonth() + 1).padStart(2, '0')}/${String(time.getDate()).padStart(2, '0')} ${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
-    meta.textContent = `${platformName} · ${timeStr}`;
-
-    li.appendChild(link);
-    li.appendChild(meta);
-    recentList.appendChild(li);
+    recentList.appendChild(buildListItem(item.filename, item.path, `${platformName} · ${formatTime(item.savedAt)}`));
   }
 }
+
+// popup 開著的時候，儲存狀態變動即時反映
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local') return;
+  renderDrafts();
+  renderRecent();
+  renderQueueInfo();
+});
 
 // 事件綁定
 saveBtn.addEventListener('click', saveSettings);
@@ -171,4 +207,5 @@ document.getElementById('version').textContent = 'v' + chrome.runtime.getManifes
 loadSettings();
 checkConnection();
 renderQueueInfo();
+renderDrafts();
 renderRecent();
