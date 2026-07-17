@@ -10,19 +10,45 @@ var SP2O = (function () {
     let retries = 0;
 
     function trySend() {
-      chrome.runtime.sendMessage(message, () => {
-        if (chrome.runtime.lastError) {
+      // 擴充功能重載後，舊分頁裡的 content script 會失效，重試無用
+      if (!chrome.runtime?.id) {
+        handleInvalidated();
+        return;
+      }
+
+      try {
+        chrome.runtime.sendMessage(message, () => {
+          const err = chrome.runtime.lastError;
+          if (!err) return;
+
+          if (/context invalidated/i.test(err.message || '')) {
+            handleInvalidated();
+            return;
+          }
+
           retries++;
           if (retries < maxRetries) {
             setTimeout(trySend, 500);
           } else {
-            console.error(LOG, '發送失敗，已達最大重試次數:', chrome.runtime.lastError.message);
+            console.error(LOG, '發送失敗，已達最大重試次數:', err.message);
           }
-        }
-      });
+        });
+      } catch (e) {
+        // context 失效時 sendMessage 會同步丟例外
+        handleInvalidated();
+      }
     }
 
     trySend();
+  }
+
+  // context 失效只提醒一次：toast 是純 DOM，失效後仍可顯示
+  let invalidatedNotified = false;
+  function handleInvalidated() {
+    if (invalidatedNotified) return;
+    invalidatedNotified = true;
+    console.warn(LOG, '擴充功能已重新載入，此分頁的舊指令碼已失效，請重新整理頁面');
+    showToast('擴充功能已更新，請重新整理此頁面以繼續存檔', false);
   }
 
   // ===== 頁面內 toast（存檔結果即時回饋）=====
