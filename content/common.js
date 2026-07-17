@@ -50,10 +50,12 @@ var SP2O = (function () {
   }
 
   // 接收 background 的存檔結果，在頁面內顯示
-  chrome.runtime.onMessage.addListener((message) => {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message && message.type === 'SAVE_RESULT') {
       showToast(message.text, message.ok);
     }
+    // 同步回應，避免 background 誤判送達失敗而重複跳系統通知
+    sendResponse({ ok: true });
   });
 
   // 訂閱 MAIN world interceptor 轉發的發文 API 回應

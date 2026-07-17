@@ -147,6 +147,7 @@
       quoted: getQuotedTweet(),
       timestamp: new Date().toISOString()
     };
+    console.log(LOG, 'Twitter: 已擷取貼文內容，等待發文 API 回應...');
 
     // 備援：時限內沒攔截到發文 API 回應，就用 DOM 資料直接送出
     clearTimeout(pendingTimer);
@@ -294,6 +295,18 @@
         if (content) {
           sendPost(content);
         }
+      }
+    }, true);
+
+    // 鍵盤發文（Cmd/Ctrl+Enter）：舊版只偵測點擊，鍵盤發文會漏存
+    document.addEventListener('keydown', (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key !== 'Enter') return;
+      if (!e.target.closest('[data-testid^="tweetTextarea_"]')) return;
+
+      console.log(LOG, 'Twitter: 偵測到鍵盤發文 (Cmd/Ctrl+Enter)');
+      const content = getTextContent();
+      if (content) {
+        sendPost(content);
       }
     }, true);
 

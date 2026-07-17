@@ -3,6 +3,7 @@
 // 監聽來自 content script 的訊息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const tabId = sender.tab ? sender.tab.id : null;
+  console.log('[Social Post to Obsidian] Received:', message.type, message.data?.platform);
 
   switch (message.type) {
     case 'SAVE_DRAFT':
@@ -57,7 +58,12 @@ async function handleSaveDraft(data) {
     console.log('[Social Post to Obsidian] Draft saved:', filename);
   } catch (error) {
     // 草稿失敗不跳通知（打字中會很吵）；正式貼文有離線佇列保底
-    console.error('[Social Post to Obsidian] Draft save failed:', error);
+    // 連線失敗屬預期情況（Obsidian 沒開），用 warn 避免在擴充功能頁堆紅色錯誤
+    if (isConnectionError(error)) {
+      console.warn('[Social Post to Obsidian] Draft save skipped (Obsidian 未連線)');
+    } else {
+      console.error('[Social Post to Obsidian] Draft save failed:', error);
+    }
   }
 }
 

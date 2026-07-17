@@ -295,6 +295,18 @@
       }
     }, true);
 
+    // 鍵盤發文（Cmd/Ctrl+Enter）：舊版只偵測點擊，鍵盤發文會漏存
+    document.addEventListener('keydown', (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key !== 'Enter') return;
+      if (!e.target.closest('[role="dialog"]')) return;
+
+      console.log(LOG, 'Threads: 偵測到鍵盤發文 (Cmd/Ctrl+Enter)');
+      const content = getTextContent();
+      if (content) {
+        sendPost(content);
+      }
+    }, true);
+
     console.log(LOG, 'Threads: 監聽已啟動');
   }
 
