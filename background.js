@@ -169,6 +169,12 @@ tags:
   - 社群貼文
   - ${platformName}`;
 
+  // 如果是回覆，記下被回覆的貼文連結
+  if (data.replyTo) {
+    frontmatter += `
+reply_to: ${data.replyTo}`;
+  }
+
   // 如果有引用，加入引用資訊
   if (data.quoted) {
     frontmatter += `

@@ -3,7 +3,10 @@
   'use strict';
 
   const PLATFORM = 'threads';
-  const DEBOUNCE_DELAY = 3000; // 3 秒
+  const LOG = '[Social Post to Obsidian]';
+  const DEBOUNCE_DELAY = 3000;   // 草稿 debounce（毫秒）
+  const API_WAIT_TIMEOUT = 8000; // 等待發文 API 回應的時限（毫秒）
+  const THREAD_WINDOW = 15000;   // 串文後續 API 回應的忽略時窗（毫秒）
 
   // Debounce timer
   let debounceTimer = null;
@@ -15,28 +18,8 @@
       '[role="button"][tabindex="0"]',
       'div[role="button"]',
       'button[type="submit"]'
-    ],
-    textInput: [
-      '[contenteditable="true"]',
-      '[role="textbox"]',
-      'textarea'
-    ],
-    // 發文對話框/表單的容器
-    composer: [
-      '[role="dialog"]',
-      'form',
-      '[data-pressable-container="true"]'
     ]
   };
-
-  // 嘗試用多個選擇器找到元素
-  function findElement(selectors, context = document) {
-    for (const selector of selectors) {
-      const el = context.querySelector(selector);
-      if (el) return el;
-    }
-    return null;
-  }
 
   // 檢查按鈕是否是最終的「發佈」按鈕
   function isPostButton(element) {
@@ -55,7 +38,7 @@
     );
 
     if (isExactMatch) {
-      console.log('[Social Post to Obsidian] Threads: 偵測到發佈按鈕', text);
+      console.log(LOG, 'Threads: 偵測到發佈按鈕', text);
     }
 
     return isExactMatch;
@@ -68,13 +51,13 @@
     const inputs = root.querySelectorAll('[contenteditable="true"], [role="textbox"], textarea');
 
     if (!inputs || inputs.length === 0) {
-      console.log('[Social Post to Obsidian] Threads: 找不到輸入框');
+      console.log(LOG, 'Threads: 找不到輸入框');
       return null;
     }
 
     const texts = [];
 
-    inputs.forEach((input, index) => {
+    inputs.forEach((input) => {
       let text = '';
       if (input.innerText) {
         text = input.innerText.trim();
@@ -91,7 +74,7 @@
     });
 
     if (texts.length === 0) {
-      console.log('[Social Post to Obsidian] Threads: 所有輸入框都是空的');
+      console.log(LOG, 'Threads: 所有輸入框都是空的');
       return null;
     }
 
@@ -100,11 +83,11 @@
       ? texts.join('\n\n---\n\n')  // 多則用分隔線
       : texts[0];                   // 單則直接用
 
-    console.log(`[Social Post to Obsidian] Threads: 擷取到 ${texts.length} 則內容`);
+    console.log(LOG, `Threads: 擷取到 ${texts.length} 則內容`);
     return result;
   }
 
-  // 擷取引用貼文資訊
+  // 擷取引用貼文資訊（DOM 備援；正式資料以攔截到的發文 API 回應為準）
   function getQuotedPost() {
     const composer = document.querySelector('[role="dialog"]');
     if (!composer) return null;
@@ -141,7 +124,7 @@
 
     if (!content && !authorHandle) return null;
 
-    console.log('[Social Post to Obsidian] Threads: 偵測到引用貼文', authorHandle);
+    console.log(LOG, 'Threads: 偵測到引用貼文 (DOM)', authorHandle);
 
     return {
       author: authorHandle || 'unknown',
@@ -151,33 +134,85 @@
     };
   }
 
-  // 發送訊息到 background（帶重試機制）
-  function sendMessageWithRetry(message, maxRetries = 3) {
-    let retries = 0;
+  // ===== 發佈流程：點擊時擷取內容 → 等發文 API 回應補上正確資料 → 送 background =====
 
-    function trySend() {
-      chrome.runtime.sendMessage(message, (response) => {
-        if (chrome.runtime.lastError) {
-          console.warn('[Social Post to Obsidian] Threads: 發送失敗，嘗試重試...', chrome.runtime.lastError.message);
-          retries++;
-          if (retries < maxRetries) {
-            // 等待一下再重試，讓 service worker 有時間啟動
-            setTimeout(trySend, 500);
-          } else {
-            console.error('[Social Post to Obsidian] Threads: 發送失敗，已達最大重試次數');
-          }
-        }
-      });
+  // 待送出的貼文
+  let pendingPost = null;
+  let pendingTimer = null;
+  let lastFlushAt = 0;
+
+  // 發送貼文內容到 background（發佈時）
+  function sendPost(content) {
+    if (!content || content.trim() === '') {
+      console.log(LOG, 'Threads: 貼文內容為空，跳過');
+      return;
     }
 
-    trySend();
+    // 清除待執行的草稿 debounce
+    clearTimeout(debounceTimer);
+
+    pendingPost = {
+      content: content.trim(),
+      quoted: getQuotedPost(),
+      timestamp: new Date().toISOString()
+    };
+
+    // 備援：時限內沒攔截到發文 API 回應，就用 DOM 資料直接送出
+    clearTimeout(pendingTimer);
+    pendingTimer = setTimeout(() => {
+      console.log(LOG, 'Threads: 未攔截到 API 回應，使用備援資料送出');
+      flushPending(null);
+    }, API_WAIT_TIMEOUT);
   }
+
+  // 組合 DOM 擷取內容與 API 回應，送出到 background
+  function flushPending(api) {
+    if (!pendingPost && !api) return;
+
+    const base = pendingPost || { content: '', quoted: null, timestamp: new Date().toISOString() };
+    const data = {
+      // DOM 擷取的內容保留使用者輸入原文；沒有時用 API 回傳的正式文字
+      content: base.content || (api ? api.text : ''),
+      platform: PLATFORM,
+      url: api ? api.url : window.location.href,
+      timestamp: base.timestamp
+    };
+
+    const quoted = (api && api.quoted) || base.quoted;
+    if (quoted) data.quoted = quoted;
+
+    pendingPost = null;
+    clearTimeout(pendingTimer);
+
+    if (!data.content) return;
+    lastFlushAt = Date.now();
+
+    SP2O.sendMessage({ type: 'PUBLISH_DRAFT', data: data });
+    console.log(LOG, 'Threads: 已發送貼文內容', data.url);
+  }
+
+  // 攔截發文 API 回應：發佈成功當下即取得正確 URL 與引用資訊
+  SP2O.onIntercept(PLATFORM, (msg) => {
+    const api = SP2O.parseThreadsCreate(msg.responseText);
+    if (!api) return;
+
+    // 串文會連續回傳多則，只用第一則建檔
+    if (!pendingPost && Date.now() - lastFlushAt < THREAD_WINDOW) {
+      console.log(LOG, 'Threads: 忽略串文後續回應', api.url);
+      return;
+    }
+
+    console.log(LOG, 'Threads: 攔截到發文 API 回應', api.url);
+    flushPending(api);
+  });
+
+  // ===== 草稿 =====
 
   // 發送草稿到 background
   function sendDraft(content) {
     if (!content || content.trim() === '') return;
 
-    sendMessageWithRetry({
+    SP2O.sendMessage({
       type: 'SAVE_DRAFT',
       data: {
         content: content.trim(),
@@ -186,192 +221,7 @@
       }
     });
 
-    console.log('[Social Post to Obsidian] Threads: 已發送草稿');
-  }
-
-  // 發送貼文內容到 background（發佈時）
-  function sendPost(content) {
-    if (!content || content.trim() === '') {
-      console.log('[Social Post to Obsidian] Threads: 貼文內容為空，跳過');
-      return;
-    }
-
-    // 清除待執行的 debounce
-    clearTimeout(debounceTimer);
-
-    const postData = {
-      content: content.trim(),
-      platform: PLATFORM,
-      url: '', // 先留空，等發佈成功後再填入
-      timestamp: new Date().toISOString()
-    };
-
-    // 檢查是否有引用貼文
-    const quoted = getQuotedPost();
-    if (quoted) {
-      postData.quoted = quoted;
-    }
-
-    // 等待 dialog 關閉後再取得新貼文連結
-    waitForPostUrl(postData);
-  }
-
-  // 等待發佈成功後取得新貼文連結
-  function waitForPostUrl(postData) {
-    const dialog = document.querySelector('[role="dialog"]');
-
-    if (!dialog) {
-      // 沒有 dialog，直接發送
-      sendToBackground(postData);
-      return;
-    }
-
-    console.log('[Social Post to Obsidian] Threads: 等待發佈完成...');
-
-    // 監聽 dialog 關閉
-    const observer = new MutationObserver((mutations, obs) => {
-      const dialogStillExists = document.querySelector('[role="dialog"]');
-
-      if (!dialogStillExists) {
-        obs.disconnect();
-        console.log('[Social Post to Obsidian] Threads: 發佈完成，尋找新貼文連結...');
-
-        // 多次嘗試尋找新貼文連結（每秒一次，最多 5 次）
-        let attempts = 0;
-        const maxAttempts = 5;
-
-        const tryFindUrl = () => {
-          attempts++;
-          console.log(`[Social Post to Obsidian] Threads: 嘗試第 ${attempts} 次...`);
-
-          const newPostUrl = findNewPostUrl();
-          if (newPostUrl) {
-            postData.url = newPostUrl;
-            sendToBackground(postData);
-          } else if (attempts < maxAttempts) {
-            setTimeout(tryFindUrl, 1000);
-          } else {
-            console.log('[Social Post to Obsidian] Threads: 找不到新貼文連結，使用個人頁面連結');
-            postData.url = `https://www.threads.com/@${getMyUsername() || 'unknown'}`;
-            sendToBackground(postData);
-          }
-        };
-
-        // 先等 2 秒讓 feed 更新
-        setTimeout(tryFindUrl, 2000);
-      }
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    // 設定超時，避免無限等待
-    setTimeout(() => {
-      observer.disconnect();
-      if (!postData.url) {
-        console.log('[Social Post to Obsidian] Threads: 超時，使用預設連結');
-        postData.url = window.location.href;
-        sendToBackground(postData);
-      }
-    }, 10000);
-  }
-
-  // 取得目前登入用戶的 username
-  function getMyUsername() {
-    // 方法 1：從導航列的「個人檔案」連結找
-    // 導航列的連結通常有 aria-label 包含「個人檔案」或「Profile」
-    const profileLinks = document.querySelectorAll('a[href^="/@"]');
-
-    for (const link of profileLinks) {
-      const ariaLabel = link.getAttribute('aria-label')?.toLowerCase() || '';
-      const href = link.getAttribute('href');
-
-      // 找「個人檔案」或「Profile」連結
-      if ((ariaLabel.includes('個人檔案') || ariaLabel.includes('profile')) && href) {
-        const username = href.replace('/@', '').split('/')[0];
-        if (username) {
-          console.log('[Social Post to Obsidian] Threads: 從導航列找到 username', username);
-          return username;
-        }
-      }
-    }
-
-    // 方法 2：從左側導航列找（通常是第 5 個連結是個人檔案）
-    const navLinks = document.querySelectorAll('nav a[href^="/@"]');
-    for (const link of navLinks) {
-      const href = link.getAttribute('href');
-      if (href && !href.includes('/post/')) {
-        const username = href.replace('/@', '').split('/')[0];
-        if (username) {
-          console.log('[Social Post to Obsidian] Threads: 從 nav 找到 username', username);
-          return username;
-        }
-      }
-    }
-
-    // 方法 3：從頁面底部或其他地方找
-    const allProfileLinks = document.querySelectorAll('a[href^="/@"]:not([href*="/post/"])');
-    const usernameCounts = {};
-
-    for (const link of allProfileLinks) {
-      const href = link.getAttribute('href');
-      const username = href?.replace('/@', '').split('/')[0];
-      if (username) {
-        usernameCounts[username] = (usernameCounts[username] || 0) + 1;
-      }
-    }
-
-    // 找出現最多次的 username（排除當前頁面的作者）
-    const currentPageAuthor = window.location.pathname.match(/@([^\/]+)/)?.[1];
-    let mostFrequent = null;
-    let maxCount = 0;
-
-    for (const [username, count] of Object.entries(usernameCounts)) {
-      if (username !== currentPageAuthor && count > maxCount) {
-        maxCount = count;
-        mostFrequent = username;
-      }
-    }
-
-    if (mostFrequent) {
-      console.log('[Social Post to Obsidian] Threads: 從頻率推測 username', mostFrequent);
-      return mostFrequent;
-    }
-
-    console.log('[Social Post to Obsidian] Threads: 找不到用戶名稱');
-    return null;
-  }
-
-  // 從 feed 找到新貼文連結
-  function findNewPostUrl() {
-    const username = getMyUsername();
-
-    if (!username) {
-      return null;
-    }
-
-    // 找 feed 中最新的自己的貼文
-    const postLinks = document.querySelectorAll(`a[href*="/@${username}/post/"]`);
-
-    for (const link of postLinks) {
-      const href = link.getAttribute('href');
-      if (href && href.includes('/post/')) {
-        const fullUrl = `https://www.threads.com${href}`;
-        console.log('[Social Post to Obsidian] Threads: 找到新貼文連結', fullUrl);
-        return fullUrl;
-      }
-    }
-
-    console.log('[Social Post to Obsidian] Threads: 找不到新貼文連結');
-    return null;
-  }
-
-  // 發送到 background
-  function sendToBackground(postData) {
-    sendMessageWithRetry({
-      type: 'PUBLISH_DRAFT',
-      data: postData
-    });
-    console.log('[Social Post to Obsidian] Threads: 已發送貼文內容', postData.url);
+    console.log(LOG, 'Threads: 已發送草稿');
   }
 
   // 設定草稿自動存檔監聽
@@ -403,13 +253,13 @@
             }, DEBOUNCE_DELAY);
           });
 
-          console.log('[Social Post to Obsidian] Threads: 已附加草稿監聽到輸入框');
+          console.log(LOG, 'Threads: 已附加草稿監聽到輸入框');
         }
       });
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
-    console.log('[Social Post to Obsidian] Threads: 草稿監聽已啟動');
+    console.log(LOG, 'Threads: 草稿監聽已啟動');
   }
 
   // 設定事件監聽
@@ -436,12 +286,12 @@
       }
     }, true);
 
-    console.log('[Social Post to Obsidian] Threads: 監聽已啟動');
+    console.log(LOG, 'Threads: 監聽已啟動');
   }
 
   // 初始化
   function init() {
-    console.log('[Social Post to Obsidian] Threads: 初始化中...', window.location.href);
+    console.log(LOG, 'Threads: 初始化中...', window.location.href);
 
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => {

@@ -3,28 +3,13 @@
   'use strict';
 
   const PLATFORM = 'x';
-  const DEBOUNCE_DELAY = 3000; // 3 秒
+  const LOG = '[Social Post to Obsidian]';
+  const DEBOUNCE_DELAY = 3000;   // 草稿 debounce（毫秒）
+  const API_WAIT_TIMEOUT = 8000; // 等待發文 API 回應的時限（毫秒）
+  const THREAD_WINDOW = 15000;   // 串文後續 API 回應的忽略時窗（毫秒）
 
   // Debounce timer
   let debounceTimer = null;
-
-  // 多個備選選擇器，增加容錯
-  const SELECTORS = {
-    postButton: [
-      '[data-testid="tweetButton"]',           // 主頁發文按鈕
-      '[data-testid="tweetButtonInline"]',     // 回覆時的發文按鈕
-      '[role="button"][tabindex="0"]'          // 通用按鈕
-    ],
-    textInput: [
-      '[data-testid="tweetTextarea_0"]',
-      '[data-testid="tweetTextarea_1"]',
-      '[data-testid="tweetTextarea_2"]',
-      '[data-testid="tweetTextarea_3"]',
-      '[role="textbox"][data-testid*="tweetTextarea"]',
-      '.public-DraftEditor-content',
-      '[contenteditable="true"][role="textbox"]'
-    ]
-  };
 
   // 檢查是否是最終的發文按鈕
   function isPostButton(element) {
@@ -33,7 +18,7 @@
     // 優先檢查 data-testid（最可靠）
     const testId = element.getAttribute('data-testid') || '';
     if (testId === 'tweetButton' || testId === 'tweetButtonInline') {
-      console.log('[Social Post to Obsidian] Twitter: 偵測到發佈按鈕 (via testid)', testId);
+      console.log(LOG, 'Twitter: 偵測到發佈按鈕 (via testid)', testId);
       return true;
     }
 
@@ -52,7 +37,7 @@
     );
 
     if (isMatch) {
-      console.log('[Social Post to Obsidian] Twitter: 偵測到發佈按鈕', text);
+      console.log(LOG, 'Twitter: 偵測到發佈按鈕', text);
     }
 
     return isMatch;
@@ -64,7 +49,7 @@
     const inputs = document.querySelectorAll('[data-testid^="tweetTextarea_"]');
 
     if (!inputs || inputs.length === 0) {
-      console.log('[Social Post to Obsidian] Twitter: 找不到輸入框');
+      console.log(LOG, 'Twitter: 找不到輸入框');
       return null;
     }
 
@@ -93,7 +78,7 @@
     });
 
     if (texts.length === 0) {
-      console.log('[Social Post to Obsidian] Twitter: 所有輸入框都是空的');
+      console.log(LOG, 'Twitter: 所有輸入框都是空的');
       return null;
     }
 
@@ -102,228 +87,124 @@
       ? texts.join('\n\n---\n\n')
       : texts[0];
 
-    console.log(`[Social Post to Obsidian] Twitter: 擷取到 ${texts.length} 則內容`);
+    console.log(LOG, `Twitter: 擷取到 ${texts.length} 則內容`);
     return result;
   }
 
-  // 擷取引用推文資訊
+  // 擷取引用推文資訊（DOM 備援；正式資料以攔截到的發文 API 回應為準）
   function getQuotedTweet() {
-    // 方法 0：從 URL 參數獲取引用推文 ID（最可靠！）
-    const currentUrl = new URL(window.location.href);
-    const quoteTweetId = currentUrl.searchParams.get('quote_tweet_id');
-
-    console.log('[Social Post to Obsidian] Twitter: URL =', window.location.href);
-    console.log('[Social Post to Obsidian] Twitter: quote_tweet_id =', quoteTweetId);
-
-    // 只在對話框或發文區域內找引用推文
     const dialog = document.querySelector('[role="dialog"]');
-    const composer = dialog || document.querySelector('[data-testid="tweetTextarea_0"]')?.closest('[data-testid="cellInnerDiv"]');
-
-    console.log('[Social Post to Obsidian] Twitter: 檢查引用推文... dialog =', !!dialog, 'composer =', !!composer);
-
+    const composer = dialog
+      || document.querySelector('[data-testid="tweetTextarea_0"]')?.closest('[data-testid="cellInnerDiv"]');
     if (!composer) return null;
 
-    // 找引用推文容器（嘗試多種選擇器）
-    let quoteContainer = composer.querySelector('[data-testid="quoteTweet"]');
-
-    if (!quoteContainer) {
-      quoteContainer = composer.querySelector('[data-testid="card.wrapper"]');
-    }
-
-    // 如果還是找不到 quoteTweet，嘗試找 quotedTweet（不同的 data-testid）
-    if (!quoteContainer) {
-      quoteContainer = composer.querySelector('[data-testid="quotedTweet"]');
-      if (quoteContainer) {
-        console.log('[Social Post to Obsidian] Twitter: 找到 quotedTweet 容器');
-      }
-    }
-
-    // 偵錯：列出對話框的 data-testid 元素
-    if (!quoteContainer) {
-      console.log('[Social Post to Obsidian] Twitter: 對話框內 data-testid 元素:');
-      const testIdEls = composer.querySelectorAll('[data-testid]');
-      const testIds = new Set();
-      testIdEls.forEach(el => testIds.add(el.getAttribute('data-testid')));
-      console.log('  ', Array.from(testIds).join(', '));
-
-      // 在對話框內找 tweetText（不在輸入框內的），這可能是引用推文
-      const tweetTexts = composer.querySelectorAll('[data-testid="tweetText"]');
-      console.log('[Social Post to Obsidian] Twitter: 對話框內找到', tweetTexts.length, '個 tweetText');
-
-      for (const textEl of tweetTexts) {
-        // 排除輸入框內的
-        if (textEl.closest('[data-testid*="tweetTextarea"]')) continue;
-
-        // 找到引用貼文的文字了！
-        const content = textEl.innerText?.trim() || '';
-        console.log('[Social Post to Obsidian] Twitter: 找到引用貼文內容:', content.substring(0, 50));
-
-        // 從 tweetText 往上找包含 /status/ 連結的父元素
-        let quotedUrl = '';
-        let parentBlock = textEl.parentElement;
-        for (let i = 0; i < 10 && parentBlock; i++) {
-          // 找這個父元素內的所有 /status/ 連結
-          const statusLinks = parentBlock.querySelectorAll('a[href*="/status/"]');
-          for (const statusLink of statusLinks) {
-            const href = statusLink.getAttribute('href');
-            if (href && !href.includes('/analytics')) {
-              quotedUrl = href.startsWith('http') ? href : `https://x.com${href}`;
-              console.log('[Social Post to Obsidian] Twitter: 在第', i, '層找到引用連結', quotedUrl);
-              break;
-            }
-          }
-          if (quotedUrl) break;
-          parentBlock = parentBlock.parentElement;
-        }
-
-        // 如果還是沒找到，嘗試在整個對話框內找（排除輸入框區域）
-        if (!quotedUrl) {
-          console.log('[Social Post to Obsidian] Twitter: 嘗試在對話框內找引用連結...');
-          const allLinks = composer.querySelectorAll('a[href*="/status/"]');
-          for (const link of allLinks) {
-            // 排除輸入框內的連結
-            if (link.closest('[data-testid*="tweetTextarea"]')) continue;
-            const href = link.getAttribute('href');
-            if (href && !href.includes('/analytics')) {
-              quotedUrl = href.startsWith('http') ? href : `https://x.com${href}`;
-              console.log('[Social Post to Obsidian] Twitter: 在對話框內找到引用連結', quotedUrl);
-              break;
-            }
-          }
-        }
-
-        // 方法 4：從 React fiber 獲取引用 URL
-        if (!quotedUrl) {
-          let cardContainer = textEl;
-          for (let i = 0; i < 10 && cardContainer; i++) {
-            const fiberKey = Object.keys(cardContainer).find(key => key.startsWith('__reactFiber$'));
-            if (fiberKey) {
-              try {
-                const fiber = cardContainer[fiberKey];
-                let current = fiber;
-                for (let j = 0; j < 5 && current; j++) {
-                  const pendingProps = current.memoizedProps || current.pendingProps;
-                  if (pendingProps) {
-                    if (pendingProps.href && pendingProps.href.includes('/status/')) {
-                      quotedUrl = pendingProps.href.startsWith('http') ? pendingProps.href : `https://x.com${pendingProps.href}`;
-                      break;
-                    }
-                    if (pendingProps.to && pendingProps.to.includes('/status/')) {
-                      quotedUrl = `https://x.com${pendingProps.to}`;
-                      break;
-                    }
-                  }
-                  current = current.return;
-                }
-              } catch (e) {
-                // 讀取 fiber 失敗，繼續嘗試下一層
-              }
-            }
-            if (quotedUrl) break;
-            cardContainer = cardContainer.parentElement;
-          }
-        }
-
-        // 找作者資訊
-        let authorHandle = 'unknown';
-        let authorName = '';
-
-        // 從 tweetText 往上找 User-Name
-        parentBlock = textEl.parentElement;
-        for (let i = 0; i < 8 && parentBlock; i++) {
-          const nameEl = parentBlock.querySelector('[data-testid="User-Name"]');
-          if (nameEl) {
-            const nameText = nameEl.textContent || '';
-            const atMatch = nameText.match(/@([a-zA-Z0-9_]+)/);
-            if (atMatch) {
-              authorHandle = atMatch[1];
-              authorName = nameText.split('@')[0]?.trim() || authorHandle;
-              console.log('[Social Post to Obsidian] Twitter: 找到引用作者', authorHandle);
-              break;
-            }
-          }
-          parentBlock = parentBlock.parentElement;
-        }
-
-        if (content || quotedUrl) {
-          return {
-            author: authorHandle,
-            authorName: authorName,
-            content: content,
-            url: quotedUrl
-          };
-        }
-      }
-
-      console.log('[Social Post to Obsidian] Twitter: 對話框內沒有找到有效的引用');
-      return null;
-    }
-
-    console.log('[Social Post to Obsidian] Twitter: quoteContainer =', !!quoteContainer);
-
+    const quoteContainer = composer.querySelector('[data-testid="quoteTweet"]')
+      || composer.querySelector('[data-testid="quotedTweet"]')
+      || composer.querySelector('[data-testid="card.wrapper"]');
     if (!quoteContainer) return null;
 
-    // 擷取原作者
-    const authorLink = quoteContainer.querySelector('a[href*="/status/"]');
-    const authorHandle = authorLink?.href?.match(/(?:twitter|x)\.com\/([^\/]+)/)?.[1];
+    // 作者
+    const nameText = quoteContainer.querySelector('[data-testid="User-Name"]')?.textContent || '';
+    const authorHandle = nameText.match(/@([a-zA-Z0-9_]+)/)?.[1] || 'unknown';
+    const authorName = nameText.split('@')[0]?.trim() || authorHandle;
 
-    const authorNameEl = quoteContainer.querySelector('[data-testid="User-Name"]');
-    const authorName = authorNameEl?.textContent?.split('@')[0]?.trim();
+    // 內容
+    const content = quoteContainer.querySelector('[data-testid="tweetText"]')?.innerText?.trim() || '';
 
-    // 擷取原文內容
-    const contentEl = quoteContainer.querySelector('[data-testid="tweetText"]');
-    const content = contentEl?.innerText?.trim();
-
-    // 擷取原文連結
-    const statusLink = quoteContainer.querySelector('a[href*="/status/"]');
+    // 連結
     let url = '';
+    const statusLink = quoteContainer.querySelector('a[href*="/status/"]');
     if (statusLink) {
-      url = statusLink.href;
-      if (url && !url.startsWith('http')) {
-        url = `https://x.com${url.startsWith('/') ? '' : '/'}${url}`;
-      }
-      console.log('[Social Post to Obsidian] Twitter: 引用連結 =', url);
+      const href = statusLink.getAttribute('href') || '';
+      url = href.startsWith('http') ? href : `https://x.com${href}`;
     }
 
-    if (!content && !authorHandle) return null;
+    if (!content && authorHandle === 'unknown') return null;
 
-    console.log('[Social Post to Obsidian] Twitter: 偵測到引用推文', authorHandle, url);
+    console.log(LOG, 'Twitter: 偵測到引用推文 (DOM)', authorHandle);
+    return { author: authorHandle, authorName: authorName, content: content, url: url };
+  }
 
-    return {
-      author: authorHandle || 'unknown',
-      authorName: authorName || authorHandle || 'unknown',
-      content: content || '',
-      url: url
+  // ===== 發佈流程：點擊時擷取內容 → 等發文 API 回應補上正確資料 → 送 background =====
+
+  // 待送出的貼文
+  let pendingPost = null;
+  let pendingTimer = null;
+  let lastFlushAt = 0;
+
+  // 發送貼文內容到 background（發佈時）
+  function sendPost(content) {
+    if (!content || content.trim() === '') {
+      console.log(LOG, 'Twitter: 貼文內容為空，跳過');
+      return;
+    }
+
+    // 清除待執行的草稿 debounce
+    clearTimeout(debounceTimer);
+
+    pendingPost = {
+      content: content.trim(),
+      quoted: getQuotedTweet(),
+      timestamp: new Date().toISOString()
     };
+
+    // 備援：時限內沒攔截到發文 API 回應，就用 DOM 資料直接送出
+    clearTimeout(pendingTimer);
+    pendingTimer = setTimeout(() => {
+      console.log(LOG, 'Twitter: 未攔截到 API 回應，使用備援資料送出');
+      flushPending(null);
+    }, API_WAIT_TIMEOUT);
   }
 
-  // 發送訊息到 background（帶重試機制）
-  function sendMessageWithRetry(message, maxRetries = 3) {
-    let retries = 0;
+  // 組合 DOM 擷取內容與 API 回應，送出到 background
+  function flushPending(api) {
+    if (!pendingPost && !api) return;
 
-    function trySend() {
-      chrome.runtime.sendMessage(message, (response) => {
-        if (chrome.runtime.lastError) {
-          console.warn('[Social Post to Obsidian] Twitter: 發送失敗，嘗試重試...', chrome.runtime.lastError.message);
-          retries++;
-          if (retries < maxRetries) {
-            // 等待一下再重試，讓 service worker 有時間啟動
-            setTimeout(trySend, 500);
-          } else {
-            console.error('[Social Post to Obsidian] Twitter: 發送失敗，已達最大重試次數');
-          }
-        }
-      });
+    const base = pendingPost || { content: '', quoted: null, timestamp: new Date().toISOString() };
+    const data = {
+      // DOM 擷取的內容保留使用者輸入原文；沒有時用 API 回傳的正式文字
+      content: base.content || (api ? api.text : ''),
+      platform: PLATFORM,
+      url: api ? api.url : window.location.href,
+      timestamp: base.timestamp
+    };
+
+    const quoted = (api && api.quoted) || base.quoted;
+    if (quoted) data.quoted = quoted;
+    if (api && api.replyTo) data.replyTo = api.replyTo;
+
+    pendingPost = null;
+    clearTimeout(pendingTimer);
+
+    if (!data.content) return;
+    lastFlushAt = Date.now();
+
+    SP2O.sendMessage({ type: 'PUBLISH_DRAFT', data: data });
+    console.log(LOG, 'Twitter: 已發送貼文內容', data.url);
+  }
+
+  // 攔截發文 API 回應：發佈成功當下即取得正確 URL、引用與回覆資訊
+  SP2O.onIntercept(PLATFORM, (msg) => {
+    const api = SP2O.parseCreateTweet(msg.responseText);
+    if (!api) return;
+
+    // 串文會連續回傳多則（第 2 則起是接續回覆），只用第一則建檔
+    if (!pendingPost && Date.now() - lastFlushAt < THREAD_WINDOW) {
+      console.log(LOG, 'Twitter: 忽略串文後續回應', api.url);
+      return;
     }
 
-    trySend();
-  }
+    console.log(LOG, 'Twitter: 攔截到發文 API 回應', api.url);
+    flushPending(api);
+  });
+
+  // ===== 草稿 =====
 
   // 發送草稿到 background
   function sendDraft(content) {
     if (!content || content.trim() === '') return;
 
-    sendMessageWithRetry({
+    SP2O.sendMessage({
       type: 'SAVE_DRAFT',
       data: {
         content: content.trim(),
@@ -332,354 +213,7 @@
       }
     });
 
-    console.log('[Social Post to Obsidian] Twitter: 已發送草稿');
-  }
-
-  // 發送貼文內容到 background（發佈時）
-  function sendPost(content) {
-    if (!content || content.trim() === '') {
-      console.log('[Social Post to Obsidian] Twitter: 貼文內容為空，跳過');
-      return;
-    }
-
-    // 清除待執行的 debounce
-    clearTimeout(debounceTimer);
-
-    const postData = {
-      content: content.trim(),
-      platform: PLATFORM,
-      url: '',  // 等發佈完成後填入
-      timestamp: new Date().toISOString()
-    };
-
-    // 檢查是否有引用推文
-    const quoted = getQuotedTweet();
-    if (quoted) {
-      postData.quoted = quoted;
-    }
-
-    // 等待發佈完成後取得新推文連結
-    waitForPostUrl(postData);
-  }
-
-  // 取得目前登入用戶的 username
-  function getMyUsername() {
-    // 方法 1：從導航列的帳戶切換按鈕找（找 @ 開頭的文字）
-    const accountSwitcher = document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
-    if (accountSwitcher) {
-      // 找所有 span，尋找以 @ 開頭的文字
-      const spans = accountSwitcher.querySelectorAll('span');
-      for (const span of spans) {
-        const text = span.textContent?.trim();
-        if (text && text.startsWith('@')) {
-          const username = text.replace('@', '');
-          console.log('[Social Post to Obsidian] Twitter: 從導航列找到 username', username);
-          return username;
-        }
-      }
-    }
-
-    // 方法 2：從個人檔案連結找
-    const profileLink = document.querySelector('a[data-testid="AppTabBar_Profile_Link"]');
-    if (profileLink) {
-      const href = profileLink.getAttribute('href');
-      if (href) {
-        const username = href.replace('/', '');
-        console.log('[Social Post to Obsidian] Twitter: 從 Profile Link 找到 username', username);
-        return username;
-      }
-    }
-
-    // 方法 3：從 URL 路徑找（如果在個人頁面）
-    const pathMatch = window.location.pathname.match(/^\/([^\/]+)$/);
-    if (pathMatch && !['home', 'explore', 'notifications', 'messages', 'search', 'compose', 'i'].includes(pathMatch[1])) {
-      console.log('[Social Post to Obsidian] Twitter: 從 URL 找到 username', pathMatch[1]);
-      return pathMatch[1];
-    }
-
-    console.log('[Social Post to Obsidian] Twitter: 找不到用戶名稱');
-    return null;
-  }
-
-  // 根據引用內容在整個頁面中搜索匹配的推文 URL
-  function findQuotedUrlByContent(quotedContent, quotedAuthor) {
-    if (!quotedContent || quotedContent.length < 10) return null;
-
-    // 取引用內容的前 30 個字作為搜索關鍵字
-    const searchText = quotedContent.substring(0, 30);
-    console.log('[Social Post to Obsidian] Twitter: 用內容匹配找引用 URL，關鍵字:', searchText);
-
-    // 在所有 article 中搜索
-    const articles = document.querySelectorAll('article');
-
-    for (const article of articles) {
-      const tweetTexts = article.querySelectorAll('[data-testid="tweetText"]');
-
-      // 只有 1 個 tweetText 的 article 才是原始推文（不是引用推文的容器）
-      if (tweetTexts.length !== 1) continue;
-
-      const text = tweetTexts[0].innerText || '';
-
-      // 檢查內容是否匹配
-      if (text.includes(searchText)) {
-        // 找這個 article 的 status 連結
-        const statusLink = article.querySelector('a[href*="/status/"]');
-        if (statusLink) {
-          const href = statusLink.getAttribute('href');
-          if (href && !href.includes('/analytics')) {
-            const url = href.startsWith('http') ? href : `https://x.com${href}`;
-            console.log('[Social Post to Obsidian] Twitter: 用內容匹配找到引用 URL', url);
-            return url;
-          }
-        }
-      }
-    }
-
-    console.log('[Social Post to Obsidian] Twitter: 內容匹配未找到引用 URL');
-    return null;
-  }
-
-  // 從 feed 中的新推文找到引用貼文的 URL
-  function findQuotedUrlFromFeed(newPostUrl, quotedContent, quotedAuthor) {
-    // 從 URL 提取 status ID
-    const statusMatch = newPostUrl.match(/status\/(\d+)/);
-    if (!statusMatch) return null;
-
-    const statusId = statusMatch[1];
-
-    // 在 feed 中找到這則新推文
-    const newTweetLink = document.querySelector(`a[href*="/status/${statusId}"]`);
-    if (!newTweetLink) {
-      console.log('[Social Post to Obsidian] Twitter: 在 feed 中找不到新推文');
-      return null;
-    }
-
-    // 找到新推文的容器（需要包含完整的推文，包括引用區塊）
-    let tweetContainer = newTweetLink.closest('article');
-    if (!tweetContainer) {
-      tweetContainer = newTweetLink.closest('[data-testid="tweet"]');
-    }
-    if (!tweetContainer) {
-      tweetContainer = newTweetLink.closest('[data-testid="cellInnerDiv"]');
-    }
-    if (!tweetContainer) {
-      // 備用：往上找，尋找包含引用區塊或多個 status 連結的容器
-      let el = newTweetLink;
-      for (let i = 0; i < 10; i++) {
-        el = el.parentElement;
-        if (!el) break;
-
-        // 方法 1：找有 quotedTweet 的容器（最可靠）
-        const hasQuote = el.querySelector('[data-testid="quotedTweet"]');
-        if (hasQuote) {
-          tweetContainer = el;
-          console.log('[Social Post to Obsidian] Twitter: 在第', i, '層找到有 quotedTweet 的容器');
-          break;
-        }
-
-        // 方法 2：找包含多個不同 status 連結的容器（表示有引用）
-        const statusLinks = el.querySelectorAll('a[href*="/status/"]');
-        const uniqueStatuses = new Set();
-        statusLinks.forEach(link => {
-          const match = link.getAttribute('href')?.match(/\/status\/(\d+)/);
-          if (match) uniqueStatuses.add(match[1]);
-        });
-
-        // 如果找到 2 個不同的 status（主推文 + 引用），這可能是好的容器
-        if (uniqueStatuses.size === 2) {
-          tweetContainer = el;
-          console.log('[Social Post to Obsidian] Twitter: 在第', i, '層找到包含 2 個 status 的容器');
-          break;
-        }
-
-        // 如果找到太多（>4），表示容器太大了，停止搜索
-        if (uniqueStatuses.size > 4) {
-          console.log('[Social Post to Obsidian] Twitter: 在第', i, '層找到太多 status，停止搜索');
-          break;
-        }
-      }
-    }
-    // 如果還是沒找到，使用較大範圍（7 層）
-    if (!tweetContainer) {
-      let el = newTweetLink;
-      for (let i = 0; i < 7; i++) {
-        el = el?.parentElement;
-      }
-      tweetContainer = el;
-      console.log('[Social Post to Obsidian] Twitter: 使用 7 層父元素作為容器');
-    }
-
-    console.log('[Social Post to Obsidian] Twitter: 推文容器 =', tweetContainer?.tagName, tweetContainer?.getAttribute('data-testid'));
-
-    if (!tweetContainer) {
-      console.log('[Social Post to Obsidian] Twitter: 找不到推文容器');
-      return null;
-    }
-
-    // 優先在 quotedTweet 區塊內找引用連結（最精確）
-    const quotedBlock = tweetContainer.querySelector('[data-testid="quotedTweet"]');
-    if (quotedBlock) {
-      const quotedLinks = quotedBlock.querySelectorAll('a[href*="/status/"]');
-      for (const link of quotedLinks) {
-        const href = link.getAttribute('href');
-        if (href && !href.includes('/analytics')) {
-          const fullUrl = `https://x.com${href}`;
-          console.log('[Social Post to Obsidian] Twitter: 從 quotedTweet 找到引用連結', fullUrl);
-          return fullUrl;
-        }
-      }
-    }
-
-    // 備用：在推文容器內找所有 /status/ 連結
-    const allStatusLinks = tweetContainer.querySelectorAll('a[href*="/status/"]');
-    console.log('[Social Post to Obsidian] Twitter: 推文容器內找到', allStatusLinks.length, '個 /status/ 連結');
-
-    // 列出所有找到的連結（偵錯用）
-    allStatusLinks.forEach(link => {
-      console.log('  -', link.getAttribute('href'));
-    });
-
-    // 如果連結太多（>6），表示容器可能包含多個推文，不可靠
-    if (allStatusLinks.length > 6) {
-      console.log('[Social Post to Obsidian] Twitter: 連結太多，容器可能包含多個推文，跳過');
-      return null;
-    }
-
-    for (const link of allStatusLinks) {
-      const href = link.getAttribute('href');
-      // 排除主推文自己的連結和 analytics 連結
-      if (href && !href.includes(statusId) && !href.includes('/analytics')) {
-        const fullUrl = `https://x.com${href}`;
-        console.log('[Social Post to Obsidian] Twitter: 找到引用連結', fullUrl);
-        return fullUrl;
-      }
-    }
-
-    // 備用 2：找推文容器內的 tweetText，排除主推文的文字
-    const tweetTexts = tweetContainer.querySelectorAll('[data-testid="tweetText"]');
-    console.log('[Social Post to Obsidian] Twitter: 推文容器內找到', tweetTexts.length, '個 tweetText');
-
-    if (tweetTexts.length > 1) {
-      // 有多個 tweetText，第二個可能是引用區塊
-      const quotedTextEl = tweetTexts[1];
-      // 從引用文字往上找連結
-      let el = quotedTextEl;
-      for (let i = 0; i < 5 && el; i++) {
-        const link = el.querySelector('a[href*="/status/"]');
-        if (link) {
-          const href = link.getAttribute('href');
-          if (href && !href.includes(statusId)) {
-            const fullUrl = `https://x.com${href}`;
-            console.log('[Social Post to Obsidian] Twitter: 從第二個 tweetText 找到引用連結', fullUrl);
-            return fullUrl;
-          }
-        }
-        el = el.parentElement;
-      }
-    }
-
-    // 備用 3：使用內容匹配在整個頁面搜索
-    if (quotedContent) {
-      const matchedUrl = findQuotedUrlByContent(quotedContent, quotedAuthor);
-      if (matchedUrl) {
-        return matchedUrl;
-      }
-    }
-
-    console.log('[Social Post to Obsidian] Twitter: 新推文中找不到引用連結');
-    return null;
-  }
-
-  // 從 feed 找到新推文連結
-  function findNewPostUrl() {
-    const username = getMyUsername();
-    if (!username) return null;
-
-    // 找 feed 中最新的自己的推文
-    const tweetLinks = document.querySelectorAll(`a[href*="/${username}/status/"]`);
-
-    for (const link of tweetLinks) {
-      const href = link.getAttribute('href');
-      if (href && href.includes('/status/')) {
-        const fullUrl = `https://x.com${href}`;
-        console.log('[Social Post to Obsidian] Twitter: 找到新推文連結', fullUrl);
-        return fullUrl;
-      }
-    }
-
-    console.log('[Social Post to Obsidian] Twitter: 找不到新推文連結');
-    return null;
-  }
-
-  // 等待發佈成功後取得新推文連結
-  function waitForPostUrl(postData) {
-    // 找發文對話框
-    const dialog = document.querySelector('[role="dialog"]');
-    const composer = document.querySelector('[data-testid="tweetButtonInline"]')?.closest('[data-testid="primaryColumn"]');
-
-    console.log('[Social Post to Obsidian] Twitter: 等待發佈完成...');
-
-    // 監聽 DOM 變化，等待發文完成
-    let attempts = 0;
-    const maxAttempts = 10;
-
-    const tryFindUrl = () => {
-      attempts++;
-      console.log(`[Social Post to Obsidian] Twitter: 嘗試第 ${attempts} 次...`);
-
-      const newPostUrl = findNewPostUrl();
-      if (newPostUrl) {
-        postData.url = newPostUrl;
-
-        // 嘗試從 feed 找引用（傳入引用內容用於內容匹配）
-        const quotedContent = postData.quoted?.content || '';
-        const quotedAuthor = postData.quoted?.author || '';
-        const quotedUrl = findQuotedUrlFromFeed(newPostUrl, quotedContent, quotedAuthor);
-        if (quotedUrl) {
-          // 如果已有 quoted 資料，更新 URL；否則建立新的 quoted 物件
-          if (postData.quoted) {
-            postData.quoted.url = quotedUrl;
-          } else {
-            postData.quoted = {
-              author: 'unknown',
-              authorName: '',
-              content: '',
-              url: quotedUrl
-            };
-          }
-          console.log('[Social Post to Obsidian] Twitter: 從 feed 找到引用 URL', quotedUrl);
-        } else if (postData.quoted && (!postData.quoted.url || !postData.quoted.url.includes('/status/'))) {
-          // 有引用但還沒找到 URL，等待後重試
-          if (attempts < maxAttempts) {
-            console.log('[Social Post to Obsidian] Twitter: 引用 URL 未找到，等待後重試...');
-            setTimeout(tryFindUrl, 1000);
-            return;
-          }
-        }
-
-        sendToBackground(postData);
-      } else if (attempts < maxAttempts) {
-        setTimeout(tryFindUrl, 1000);
-      } else {
-        // 找不到就用個人頁面連結
-        const username = getMyUsername();
-        postData.url = username ? `https://x.com/${username}` : window.location.href;
-        console.log('[Social Post to Obsidian] Twitter: 找不到新推文連結，使用備用連結', postData.url);
-        sendToBackground(postData);
-      }
-    };
-
-    // 先等 2 秒讓發文完成
-    setTimeout(tryFindUrl, 2000);
-  }
-
-  // 發送到 background
-  function sendToBackground(postData) {
-    sendMessageWithRetry({
-      type: 'PUBLISH_DRAFT',
-      data: postData
-    });
-    console.log('[Social Post to Obsidian] Twitter: 已發送貼文內容', postData.url);
+    console.log(LOG, 'Twitter: 已發送草稿');
   }
 
   // 設定草稿自動存檔監聽
@@ -708,16 +242,16 @@
             }, DEBOUNCE_DELAY);
           });
 
-          console.log('[Social Post to Obsidian] Twitter: 已附加草稿監聽到輸入框');
+          console.log(LOG, 'Twitter: 已附加草稿監聽到輸入框');
         }
       });
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
-    console.log('[Social Post to Obsidian] Twitter: 草稿監聽已啟動');
+    console.log(LOG, 'Twitter: 草稿監聽已啟動');
   }
 
-  // 設定事件監聯
+  // 設定事件監聽
   function setupListener() {
     document.addEventListener('click', (e) => {
       // 方法 1：直接用 data-testid 找發文按鈕（最可靠）
@@ -726,11 +260,11 @@
       if (tweetButton) {
         // 確認按鈕沒有被禁用
         if (tweetButton.getAttribute('aria-disabled') === 'true') {
-          console.log('[Social Post to Obsidian] Twitter: 按鈕已禁用，跳過');
+          console.log(LOG, 'Twitter: 按鈕已禁用，跳過');
           return;
         }
 
-        console.log('[Social Post to Obsidian] Twitter: 偵測到發佈按鈕點擊 (via testid)');
+        console.log(LOG, 'Twitter: 偵測到發佈按鈕點擊 (via testid)');
 
         // 擷取並發送內容
         const content = getTextContent();
@@ -754,12 +288,12 @@
       }
     }, true);
 
-    console.log('[Social Post to Obsidian] Twitter: 監聯已啟動');
+    console.log(LOG, 'Twitter: 監聽已啟動');
   }
 
   // 初始化
   function init() {
-    console.log('[Social Post to Obsidian] Twitter: 初始化中...', window.location.href);
+    console.log(LOG, 'Twitter: 初始化中...', window.location.href);
 
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => {
