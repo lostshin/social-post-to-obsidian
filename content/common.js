@@ -25,6 +25,37 @@ var SP2O = (function () {
     trySend();
   }
 
+  // ===== 頁面內 toast（存檔結果即時回饋）=====
+  let toastTimer = null;
+
+  function showToast(text, ok) {
+    let el = document.getElementById('sp2o-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'sp2o-toast';
+      el.style.cssText = [
+        'position:fixed', 'bottom:24px', 'right:24px', 'z-index:2147483647',
+        'padding:10px 16px', 'border-radius:8px', 'font-size:14px', 'color:#fff',
+        'font-family:system-ui,-apple-system,sans-serif', 'max-width:320px',
+        'box-shadow:0 4px 12px rgba(0,0,0,.35)', 'opacity:0',
+        'transition:opacity .25s ease', 'pointer-events:none'
+      ].join(';');
+      document.documentElement.appendChild(el);
+    }
+    el.style.background = ok ? '#1e7e34' : '#b02a37';
+    el.textContent = (ok ? '✓ ' : '✕ ') + text;
+    requestAnimationFrame(() => { el.style.opacity = '1'; });
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.style.opacity = '0'; }, 3500);
+  }
+
+  // 接收 background 的存檔結果，在頁面內顯示
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message && message.type === 'SAVE_RESULT') {
+      showToast(message.text, message.ok);
+    }
+  });
+
   // 訂閱 MAIN world interceptor 轉發的發文 API 回應
   function onIntercept(platform, callback) {
     window.addEventListener('message', (event) => {
@@ -138,5 +169,5 @@ var SP2O = (function () {
     return null;
   }
 
-  return { sendMessage, onIntercept, parseCreateTweet, parseThreadsCreate };
+  return { sendMessage, showToast, onIntercept, parseCreateTweet, parseThreadsCreate };
 })();

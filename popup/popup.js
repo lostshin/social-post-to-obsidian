@@ -5,6 +5,11 @@ const basePathInput = document.getElementById('basePath');
 const testBtn = document.getElementById('testBtn');
 const saveBtn = document.getElementById('saveBtn');
 const statusDiv = document.getElementById('status');
+const connDot = document.getElementById('connDot');
+const connText = document.getElementById('connText');
+const queueInfo = document.getElementById('queueInfo');
+const recentSection = document.getElementById('recentSection');
+const recentList = document.getElementById('recentList');
 
 // 載入已儲存的設定
 async function loadSettings() {
@@ -86,9 +91,83 @@ function showStatus(message, type) {
   statusDiv.className = `status ${type}`;
 }
 
+// 開啟 popup 時自動檢查連線狀態
+async function checkConnection() {
+  const settings = await chrome.storage.local.get(['apiKey', 'port']);
+
+  if (!settings.apiKey) {
+    connDot.className = 'dot fail';
+    connText.textContent = '尚未設定 API Key';
+    return;
+  }
+
+  const port = settings.port || 27123;
+  const protocol = port === 27124 ? 'https' : 'http';
+
+  try {
+    const response = await fetch(`${protocol}://127.0.0.1:${port}/`, {
+      headers: { 'Authorization': `Bearer ${settings.apiKey}` }
+    });
+    if (response.ok) {
+      connDot.className = 'dot ok';
+      connText.textContent = 'Obsidian 已連線';
+    } else {
+      connDot.className = 'dot fail';
+      connText.textContent = response.status === 401 ? 'API Key 無效' : `連線異常 (HTTP ${response.status})`;
+    }
+  } catch {
+    connDot.className = 'dot fail';
+    connText.textContent = 'Obsidian 未連線';
+  }
+}
+
+// 顯示待補存佇列數量
+async function renderQueueInfo() {
+  const { offlineQueue = [] } = await chrome.storage.local.get('offlineQueue');
+  if (offlineQueue.length > 0) {
+    queueInfo.hidden = false;
+    queueInfo.textContent = `待補存 ${offlineQueue.length} 則（Obsidian 連線後自動補存）`;
+  }
+}
+
+// 顯示最近儲存清單，點擊可在 Obsidian 開啟
+async function renderRecent() {
+  const { recentSaves = [] } = await chrome.storage.local.get('recentSaves');
+  if (recentSaves.length === 0) return;
+
+  recentSection.hidden = false;
+  recentList.textContent = '';
+
+  for (const item of recentSaves) {
+    const li = document.createElement('li');
+
+    const link = document.createElement('a');
+    link.href = '#';
+    link.textContent = item.filename;
+    link.title = '在 Obsidian 中開啟';
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: 'obsidian://open?file=' + encodeURIComponent(item.path) });
+    });
+
+    const meta = document.createElement('small');
+    const platformName = item.platform === 'x' ? 'Twitter/X' : 'Threads';
+    const time = new Date(item.savedAt);
+    const timeStr = `${String(time.getMonth() + 1).padStart(2, '0')}/${String(time.getDate()).padStart(2, '0')} ${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
+    meta.textContent = `${platformName} · ${timeStr}`;
+
+    li.appendChild(link);
+    li.appendChild(meta);
+    recentList.appendChild(li);
+  }
+}
+
 // 事件綁定
 saveBtn.addEventListener('click', saveSettings);
 testBtn.addEventListener('click', testConnection);
 
 // 初始化
 loadSettings();
+checkConnection();
+renderQueueInfo();
+renderRecent();

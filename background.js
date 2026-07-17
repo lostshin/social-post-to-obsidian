@@ -2,15 +2,17 @@
 
 // 監聽來自 content script 的訊息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  const tabId = sender.tab ? sender.tab.id : null;
+
   switch (message.type) {
     case 'SAVE_DRAFT':
       enqueue(message.data.platform, () => handleSaveDraft(message.data));
       break;
     case 'PUBLISH_DRAFT':
-      enqueue(message.data.platform, () => handlePublishDraft(message.data));
+      enqueue(message.data.platform, () => handlePublishDraft(message.data, tabId));
       break;
     case 'SAVE_POST':
-      enqueue(message.data.platform, () => handleSavePost(message.data));
+      enqueue(message.data.platform, () => handleSavePost(message.data, tabId));
       break;
   }
 
@@ -41,8 +43,7 @@ async function handleSaveDraft(data) {
     const settings = await chrome.storage.local.get(['apiKey', 'port', 'basePath']);
 
     if (!settings.apiKey) {
-      // 草稿存檔失敗時顯示警告
-      showNotification('草稿存檔失敗', '請先設定 Obsidian API Key');
+      console.log('[Social Post to Obsidian] Draft skipped: no API key');
       return;
     }
 
@@ -55,20 +56,20 @@ async function handleSaveDraft(data) {
 
     console.log('[Social Post to Obsidian] Draft saved:', filename);
   } catch (error) {
+    // 草稿失敗不跳通知（打字中會很吵）；正式貼文有離線佇列保底
     console.error('[Social Post to Obsidian] Draft save failed:', error);
-    showNotification('草稿存檔失敗', error.message);
   }
 }
 
 // 處理發佈（刪除草稿 + 存正式檔案）
-async function handlePublishDraft(data) {
+async function handlePublishDraft(data, tabId) {
   try {
     lastPublishTimestamp[data.platform] = data.timestamp;
 
     const settings = await chrome.storage.local.get(['apiKey', 'port', 'basePath']);
 
     if (!settings.apiKey) {
-      showNotification('設定錯誤', '請先在擴充功能設定中輸入 Obsidian API Key');
+      notifyResult(tabId, false, '請先在擴充功能設定中輸入 Obsidian API Key');
       return;
     }
 
@@ -83,14 +84,32 @@ async function handlePublishDraft(data) {
     const markdown = generateMarkdown(data);
     const filename = generateFilename(data);
     const fullPath = `${basePath}/${filename}`;
-    await saveToObsidian(markdown, fullPath, settings.apiKey, settings.port || 27123);
-
-    showNotification('存檔成功', `已儲存: ${filename}`);
-    console.log('[Social Post to Obsidian] Published:', fullPath);
+    await saveWithQueueFallback(markdown, fullPath, filename, data, settings, tabId);
   } catch (error) {
     console.error('[Social Post to Obsidian] Publish failed:', error);
-    showNotification('存檔失敗', error.message);
+    notifyResult(tabId, false, error.message);
   }
+}
+
+// 存檔；Obsidian 未連線時加入離線佇列，稍後自動補存
+async function saveWithQueueFallback(markdown, fullPath, filename, data, settings, tabId) {
+  try {
+    await saveToObsidian(markdown, fullPath, settings.apiKey, settings.port || 27123);
+  } catch (error) {
+    if (isConnectionError(error)) {
+      await enqueueOffline({
+        markdown, path: fullPath, filename,
+        platform: data.platform, url: data.url
+      });
+      notifyResult(tabId, false, 'Obsidian 未連線，已加入待存佇列，連線後自動補存');
+      return;
+    }
+    throw error;
+  }
+
+  await recordRecentSave({ filename, path: fullPath, platform: data.platform, url: data.url });
+  notifyResult(tabId, true, `已儲存: ${filename}`);
+  console.log('[Social Post to Obsidian] Published:', fullPath);
 }
 
 // 刪除草稿檔案
@@ -114,12 +133,12 @@ async function deleteDraft(filepath, apiKey, port) {
 }
 
 // 處理貼文存檔（舊版相容）
-async function handleSavePost(data) {
+async function handleSavePost(data, tabId) {
   try {
     const settings = await chrome.storage.local.get(['apiKey', 'port', 'basePath']);
 
     if (!settings.apiKey) {
-      showNotification('設定錯誤', '請先在擴充功能設定中輸入 Obsidian API Key');
+      notifyResult(tabId, false, '請先在擴充功能設定中輸入 Obsidian API Key');
       return;
     }
 
@@ -127,13 +146,95 @@ async function handleSavePost(data) {
     const filename = generateFilename(data);
     const fullPath = `${settings.basePath || '個人創作/社群推文'}/${filename}`;
 
-    await saveToObsidian(markdown, fullPath, settings.apiKey, settings.port || 27123);
-
-    showNotification('存檔成功', `已儲存: ${filename}`);
-    console.log('[Social Post to Obsidian] Saved:', fullPath);
+    await saveWithQueueFallback(markdown, fullPath, filename, data, settings, tabId);
   } catch (error) {
     console.error('[Social Post to Obsidian] Save failed:', error);
-    showNotification('存檔失敗', error.message);
+    notifyResult(tabId, false, error.message);
+  }
+}
+
+// ===== 離線佇列：Obsidian 沒開時先排隊，恢復連線後自動補存 =====
+
+const QUEUE_KEY = 'offlineQueue';
+const RETRY_ALARM = 'sp2o-retry-queue';
+
+function isConnectionError(error) {
+  return error instanceof TypeError || /Failed to fetch|NetworkError/i.test(error.message || '');
+}
+
+async function enqueueOffline(item) {
+  const stored = await chrome.storage.local.get(QUEUE_KEY);
+  const queue = stored[QUEUE_KEY] || [];
+  queue.push({ ...item, queuedAt: new Date().toISOString() });
+  // 上限 50 筆，避免無限成長
+  await chrome.storage.local.set({ [QUEUE_KEY]: queue.slice(-50) });
+  chrome.alarms.create(RETRY_ALARM, { periodInMinutes: 1 });
+  console.log('[Social Post to Obsidian] Queued for retry:', item.filename);
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === RETRY_ALARM) {
+    enqueue('offline-retry', retryOfflineQueue);
+  }
+});
+
+async function retryOfflineQueue() {
+  const stored = await chrome.storage.local.get(QUEUE_KEY);
+  const queue = stored[QUEUE_KEY] || [];
+  if (queue.length === 0) {
+    chrome.alarms.clear(RETRY_ALARM);
+    return;
+  }
+
+  const settings = await chrome.storage.local.get(['apiKey', 'port']);
+  if (!settings.apiKey) return;
+
+  const remaining = [];
+  let saved = 0;
+  for (const item of queue) {
+    try {
+      await saveToObsidian(item.markdown, item.path, settings.apiKey, settings.port || 27123);
+      await recordRecentSave({ filename: item.filename, path: item.path, platform: item.platform, url: item.url });
+      saved++;
+    } catch (error) {
+      remaining.push(item);
+    }
+  }
+
+  await chrome.storage.local.set({ [QUEUE_KEY]: remaining });
+  if (saved > 0) {
+    showNotification('已補存', `Obsidian 恢復連線，補存 ${saved} 則貼文`);
+  }
+  if (remaining.length === 0) {
+    chrome.alarms.clear(RETRY_ALARM);
+  }
+}
+
+// service worker 啟動時，若佇列有東西就確保重試 alarm 存在
+chrome.storage.local.get(QUEUE_KEY).then((stored) => {
+  if ((stored[QUEUE_KEY] || []).length > 0) {
+    chrome.alarms.create(RETRY_ALARM, { periodInMinutes: 1 });
+  }
+});
+
+// 記錄最近儲存（popup 顯示用，保留 5 筆）
+async function recordRecentSave(entry) {
+  const stored = await chrome.storage.local.get('recentSaves');
+  const recentSaves = stored.recentSaves || [];
+  recentSaves.unshift({ ...entry, savedAt: new Date().toISOString() });
+  await chrome.storage.local.set({ recentSaves: recentSaves.slice(0, 5) });
+}
+
+// 回報存檔結果：優先在原分頁顯示 toast，分頁不在了才用系統通知
+function notifyResult(tabId, ok, text) {
+  if (tabId != null) {
+    chrome.tabs.sendMessage(tabId, { type: 'SAVE_RESULT', ok, text }, () => {
+      if (chrome.runtime.lastError) {
+        showNotification(ok ? '存檔成功' : '存檔失敗', text);
+      }
+    });
+  } else {
+    showNotification(ok ? '存檔成功' : '存檔失敗', text);
   }
 }
 

@@ -10,6 +10,12 @@
   <div class="container">
     <h1>Social Post to Obsidian</h1>
 
+    <div class="conn-row">
+      <span id="connDot" class="dot"></span>
+      <span id="connText">檢查連線中…</span>
+    </div>
+    <div id="queueInfo" class="queue-info" hidden></div>
+
     <div class="form-group">
       <label for="apiKey">Obsidian API Key</label>
       <input type="password" id="apiKey" placeholder="輸入 Local REST API Key">
@@ -34,6 +40,11 @@
     </div>
 
     <div id="status" class="status"></div>
+
+    <div id="recentSection" class="recent" hidden>
+      <h2>最近儲存</h2>
+      <ul id="recentList"></ul>
+    </div>
   </div>
 
   <script src="popup.js"></script>

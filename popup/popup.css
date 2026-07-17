@@ -23,6 +23,81 @@ h1 {
   color: #7c3aed;
 }
 
+.conn-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #555;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ccc;
+  flex-shrink: 0;
+}
+
+.dot.ok {
+  background: #22c55e;
+}
+
+.dot.fail {
+  background: #ef4444;
+}
+
+.queue-info {
+  margin: -6px 0 12px 14px;
+  font-size: 11px;
+  color: #b45309;
+}
+
+.recent {
+  margin-top: 14px;
+  border-top: 1px solid #e5e5e5;
+  padding-top: 10px;
+}
+
+.recent h2 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 6px;
+}
+
+.recent ul {
+  list-style: none;
+}
+
+.recent li {
+  padding: 5px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.recent li:last-child {
+  border-bottom: none;
+}
+
+.recent a {
+  display: block;
+  color: #7c3aed;
+  text-decoration: none;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent a:hover {
+  text-decoration: underline;
+}
+
+.recent small {
+  margin-top: 1px;
+}
+
 .form-group {
   margin-bottom: 14px;
 }

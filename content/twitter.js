@@ -4,7 +4,7 @@
 
   const PLATFORM = 'x';
   const LOG = '[Social Post to Obsidian]';
-  const DEBOUNCE_DELAY = 3000;   // 草稿 debounce（毫秒）
+  const DEBOUNCE_DELAY = 1500;   // 草稿 debounce（毫秒）
   const API_WAIT_TIMEOUT = 8000; // 等待發文 API 回應的時限（毫秒）
   const THREAD_WINDOW = 15000;   // 串文後續 API 回應的忽略時窗（毫秒）
 
@@ -240,6 +240,15 @@
                 sendDraft(content);
               }
             }, DEBOUNCE_DELAY);
+          });
+
+          // 離開輸入框時立即存一次草稿
+          input.addEventListener('blur', () => {
+            clearTimeout(debounceTimer);
+            const content = getTextContent();
+            if (content) {
+              sendDraft(content);
+            }
           });
 
           console.log(LOG, 'Twitter: 已附加草稿監聽到輸入框');
