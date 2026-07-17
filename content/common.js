@@ -71,7 +71,8 @@ var SP2O = (function () {
       el = document.createElement('div');
       el.id = 'sp2o-toast';
       el.style.cssText = [
-        'position:fixed', 'bottom:24px', 'right:24px', 'z-index:2147483647',
+        // 比草稿狀態列高一階，兩者可同時顯示不重疊
+        'position:fixed', 'bottom:64px', 'right:24px', 'z-index:2147483647',
         'padding:10px 16px', 'border-radius:8px', 'font-size:14px', 'color:#fff',
         'font-family:system-ui,-apple-system,sans-serif', 'max-width:320px',
         'box-shadow:0 4px 12px rgba(0,0,0,.35)', 'opacity:0',
@@ -89,10 +90,46 @@ var SP2O = (function () {
     toastTimer = setTimeout(() => { el.style.opacity = '0'; }, 3500);
   }
 
+  // ===== 草稿暫存狀態列（低調常駐小膠囊，每次暫存更新時間）=====
+  let draftStatusTimer = null;
+
+  function showDraftStatus(text, ok) {
+    let el = document.getElementById('sp2o-draft-status');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'sp2o-draft-status';
+      el.style.cssText = [
+        'position:fixed', 'bottom:24px', 'right:24px', 'z-index:2147483646',
+        'padding:5px 12px', 'border-radius:999px', 'font-size:12px', 'color:#fff',
+        'font-family:system-ui,-apple-system,sans-serif', 'max-width:280px',
+        'box-shadow:0 2px 8px rgba(0,0,0,.3)', 'opacity:0',
+        'transition:opacity .25s ease', 'pointer-events:none'
+      ].join(';');
+      document.documentElement.appendChild(el);
+    }
+    el.style.background = ok ? 'rgba(45,55,72,.88)' : 'rgba(146,64,14,.92)';
+    el.textContent = (ok ? '✓ ' : '⚠ ') + text;
+    void el.offsetWidth;
+    el.style.opacity = '1';
+    clearTimeout(draftStatusTimer);
+    // 兩秒後淡到半透明常駐（不完全消失，隨時可瞄一眼暫存時間）
+    draftStatusTimer = setTimeout(() => { el.style.opacity = '0.55'; }, 2000);
+  }
+
+  function hideDraftStatus() {
+    const el = document.getElementById('sp2o-draft-status');
+    if (el) el.remove();
+  }
+
   // 接收 background 的存檔結果，在頁面內顯示
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message && message.type === 'SAVE_RESULT') {
+      // 發佈後草稿已刪除，狀態列一併收掉
+      hideDraftStatus();
       showToast(message.text, message.ok);
+    }
+    if (message && message.type === 'DRAFT_RESULT') {
+      showDraftStatus(message.text, message.ok);
     }
     // 同步回應，避免 background 誤判送達失敗而重複跳系統通知
     sendResponse({ ok: true });

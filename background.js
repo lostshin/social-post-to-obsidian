@@ -12,7 +12,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   switch (message.type) {
     case 'SAVE_DRAFT':
-      enqueue(message.data.platform, () => handleSaveDraft(message.data));
+      enqueue(message.data.platform, () => handleSaveDraft(message.data, tabId));
       break;
     case 'PUBLISH_DRAFT':
       enqueue(message.data.platform, () => handlePublishDraft(message.data, tabId));
@@ -37,7 +37,7 @@ function enqueue(platform, task) {
 }
 
 // 處理草稿存檔
-async function handleSaveDraft(data) {
+async function handleSaveDraft(data, tabId) {
   try {
     // 發佈後才送達的舊草稿直接丟棄，避免已刪除的草稿檔又被寫回
     const publishedAt = lastPublishTimestamp[data.platform];
@@ -50,6 +50,7 @@ async function handleSaveDraft(data) {
 
     if (!settings.apiKey) {
       console.log('[Social Post to Obsidian] Draft skipped: no API key');
+      sendDraftStatus(tabId, false, '尚未設定 API Key，草稿未暫存');
       return;
     }
 
@@ -61,16 +62,26 @@ async function handleSaveDraft(data) {
     await saveToObsidian(markdown, fullPath, settings.apiKey, settings.port || 27123);
 
     console.log('[Social Post to Obsidian] Draft saved:', filename);
+    sendDraftStatus(tabId, true, `草稿已暫存 ${formatDateTime(data.timestamp).slice(-5)}`);
   } catch (error) {
-    // 草稿失敗不跳通知（打字中會很吵）；正式貼文有離線佇列保底
-    // 連線失敗屬預期情況（Obsidian 沒開），用 warn 避免在擴充功能頁堆紅色錯誤
+    // 草稿失敗不跳系統通知（打字中會很吵）；正式貼文有離線佇列保底
     if (isConnectionError(error)) {
       // 用 log 而非 warn：warn 會被收進擴充功能錯誤頁，Obsidian 沒開是預期情況
       console.log('[Social Post to Obsidian] Draft save skipped (Obsidian 未連線)');
+      sendDraftStatus(tabId, false, 'Obsidian 未連線，草稿未暫存');
     } else {
       console.error('[Social Post to Obsidian] Draft save failed:', error);
+      sendDraftStatus(tabId, false, '草稿暫存失敗');
     }
   }
+}
+
+// 草稿狀態只回報到頁面內的狀態列，不用系統通知（分頁不在就靜默略過）
+function sendDraftStatus(tabId, ok, text) {
+  if (tabId == null) return;
+  chrome.tabs.sendMessage(tabId, { type: 'DRAFT_RESULT', ok, text }, () => {
+    void chrome.runtime.lastError;
+  });
 }
 
 // 處理發佈（刪除草稿 + 存正式檔案）
