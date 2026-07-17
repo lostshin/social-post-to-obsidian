@@ -10,31 +10,36 @@ var SP2O = (function () {
     let retries = 0;
 
     function trySend() {
-      // 擴充功能重載後，舊分頁裡的 content script 會失效，重試無用
-      if (!chrome.runtime?.id) {
-        handleInvalidated();
-        return;
-      }
-
+      // 整段包 try/catch：context 失效時，連讀取 chrome.runtime.id
+      // 都可能同步丟出 "Extension context invalidated"
       try {
+        // 擴充功能重載後，舊分頁裡的 content script 會失效，重試無用
+        if (!chrome.runtime?.id) {
+          handleInvalidated();
+          return;
+        }
+
         chrome.runtime.sendMessage(message, () => {
-          const err = chrome.runtime.lastError;
-          if (!err) return;
+          try {
+            const err = chrome.runtime.lastError;
+            if (!err) return;
 
-          if (/context invalidated/i.test(err.message || '')) {
+            if (/context invalidated/i.test(err.message || '')) {
+              handleInvalidated();
+              return;
+            }
+
+            retries++;
+            if (retries < maxRetries) {
+              setTimeout(trySend, 500);
+            } else {
+              console.error(LOG, '發送失敗，已達最大重試次數:', err.message);
+            }
+          } catch (e) {
             handleInvalidated();
-            return;
-          }
-
-          retries++;
-          if (retries < maxRetries) {
-            setTimeout(trySend, 500);
-          } else {
-            console.error(LOG, '發送失敗，已達最大重試次數:', err.message);
           }
         });
       } catch (e) {
-        // context 失效時 sendMessage 會同步丟例外
         handleInvalidated();
       }
     }
