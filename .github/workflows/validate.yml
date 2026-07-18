@@ -22,3 +22,6 @@ jobs:
 
       - name: Validate extension
         run: node scripts/validate-extension.mjs
+
+      - name: Test media sync
+        run: node tests/media-sync.test.mjs

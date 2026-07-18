@@ -110,10 +110,9 @@ async function handlePublishDraft(data, tabId) {
     await chrome.storage.local.remove('draftStatus_' + data.platform);
 
     // 2. 存正式檔案
-    const markdown = generateMarkdown(data);
     const filename = generateFilename(data);
     const fullPath = `${basePath}/${filename}`;
-    await saveWithQueueFallback(markdown, fullPath, filename, data, settings, tabId);
+    await saveWithQueueFallback(fullPath, filename, data, settings, tabId);
   } catch (error) {
     console.error('[Social Post to Obsidian] Publish failed:', error);
     notifyResult(tabId, false, error.message);
@@ -121,13 +120,14 @@ async function handlePublishDraft(data, tabId) {
 }
 
 // 存檔；Obsidian 未連線時加入離線佇列，稍後自動補存
-async function saveWithQueueFallback(markdown, fullPath, filename, data, settings, tabId) {
+async function saveWithQueueFallback(fullPath, filename, data, settings, tabId) {
+  let result;
   try {
-    await saveToObsidian(markdown, fullPath, settings.apiKey, settings.port || 27123);
+    result = await savePostBundle(data, fullPath, filename, settings);
   } catch (error) {
     if (isConnectionError(error)) {
       await enqueueOffline({
-        markdown, path: fullPath, filename,
+        data, path: fullPath, filename,
         platform: data.platform, url: data.url
       });
       notifyResult(tabId, false, 'Obsidian 未連線，已加入待存佇列，連線後自動補存');
@@ -137,8 +137,83 @@ async function saveWithQueueFallback(markdown, fullPath, filename, data, setting
   }
 
   await recordRecentSave({ filename, path: fullPath, platform: data.platform, url: data.url });
-  notifyResult(tabId, true, `已儲存: ${filename}`);
+  const mediaText = result.failedMedia > 0
+    ? `（${result.failedMedia} 張圖片未同步）`
+    : result.savedMedia > 0 ? `（${result.savedMedia} 張圖片）` : '';
+  notifyResult(tabId, true, `已儲存${mediaText}: ${filename}`);
   console.log('[Social Post to Obsidian] Published:', fullPath);
+}
+
+const IMAGE_EXTENSIONS = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/avif': 'avif'
+};
+
+// Write images before Markdown. Retries overwrite the same paths, so the operation is idempotent.
+async function savePostBundle(data, fullPath, filename, settings) {
+  const media = Array.isArray(data.media) ? data.media.slice(0, 20) : [];
+  const noteDirectory = fullPath.includes('/') ? fullPath.slice(0, fullPath.lastIndexOf('/')) : '';
+  const assetFolder = filename.replace(/\.md$/i, '');
+  const mediaResults = [];
+
+  for (let index = 0; index < media.length; index++) {
+    const item = media[index];
+    try {
+      const image = await downloadImage(item.url);
+      const imageName = `image-${String(index + 1).padStart(2, '0')}.${image.extension}`;
+      const relativePath = `_assets/${assetFolder}/${imageName}`;
+      const vaultPath = noteDirectory ? `${noteDirectory}/${relativePath}` : relativePath;
+
+      await saveFileToObsidian(
+        image.bytes,
+        vaultPath,
+        settings.apiKey,
+        settings.port || 27123,
+        image.contentType
+      );
+      mediaResults.push({ path: relativePath, alt: item.alt || `圖片 ${index + 1}` });
+    } catch (error) {
+      // Propagate Vault errors for queue handling, but keep the note when a remote image fails.
+      if (error.isObsidianApiError) throw error;
+      console.log('[Social Post to Obsidian] Media download skipped:', index + 1, error.message);
+      mediaResults.push({ url: item.url, alt: item.alt || `圖片 ${index + 1}`, failed: true });
+    }
+  }
+
+  const markdown = generateMarkdown(data, mediaResults);
+  await saveToObsidian(markdown, fullPath, settings.apiKey, settings.port || 27123);
+
+  return {
+    savedMedia: mediaResults.filter(item => !item.failed).length,
+    failedMedia: mediaResults.filter(item => item.failed).length
+  };
+}
+
+async function downloadImage(url) {
+  const parsedUrl = new URL(url);
+  if (parsedUrl.protocol !== 'https:') throw new Error('圖片網址不是 HTTPS');
+
+  const response = await fetch(url, { cache: 'no-store' });
+  if (!response.ok) throw new Error(`圖片下載失敗: HTTP ${response.status}`);
+
+  const contentType = (response.headers.get('content-type') || '').split(';')[0].toLowerCase();
+  const pathExtension = parsedUrl.pathname.match(/\.([a-zA-Z0-9]+)$/)?.[1]?.toLowerCase();
+  const extension = IMAGE_EXTENSIONS[contentType]
+    || (['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'].includes(pathExtension) ? pathExtension.replace('jpeg', 'jpg') : '');
+  if (!extension) throw new Error(`不支援的圖片格式: ${contentType || 'unknown'}`);
+
+  const bytes = await response.arrayBuffer();
+  if (bytes.byteLength === 0) throw new Error('圖片內容為空');
+
+  return {
+    bytes: bytes,
+    contentType: IMAGE_EXTENSIONS[contentType] ? contentType : `image/${extension === 'jpg' ? 'jpeg' : extension}`,
+    extension: extension
+  };
 }
 
 // 刪除草稿檔案
@@ -171,11 +246,10 @@ async function handleSavePost(data, tabId) {
       return;
     }
 
-    const markdown = generateMarkdown(data);
     const filename = generateFilename(data);
     const fullPath = `${settings.basePath || '個人創作/社群推文'}/${filename}`;
 
-    await saveWithQueueFallback(markdown, fullPath, filename, data, settings, tabId);
+    await saveWithQueueFallback(fullPath, filename, data, settings, tabId);
   } catch (error) {
     console.error('[Social Post to Obsidian] Save failed:', error);
     notifyResult(tabId, false, error.message);
@@ -188,7 +262,8 @@ const QUEUE_KEY = 'offlineQueue';
 const RETRY_ALARM = 'sp2o-retry-queue';
 
 function isConnectionError(error) {
-  return error instanceof TypeError || /Failed to fetch|NetworkError/i.test(error.message || '');
+  return error.isObsidianConnectionError
+    || (error instanceof TypeError && /Failed to fetch|NetworkError/i.test(error.message || ''));
 }
 
 async function enqueueOffline(item) {
@@ -222,7 +297,12 @@ async function retryOfflineQueue() {
   let saved = 0;
   for (const item of queue) {
     try {
-      await saveToObsidian(item.markdown, item.path, settings.apiKey, settings.port || 27123);
+      if (item.data) {
+        await savePostBundle(item.data, item.path, item.filename, settings);
+      } else {
+        // Queue entries created before v1.6 only contain rendered Markdown.
+        await saveToObsidian(item.markdown, item.path, settings.apiKey, settings.port || 27123);
+      }
       await recordRecentSave({ filename: item.filename, path: item.path, platform: item.platform, url: item.url });
       saved++;
     } catch (error) {
@@ -283,9 +363,9 @@ ${data.content}
 `;
 }
 
-// 產生 Markdown 內容（支援引用貼文）
-function generateMarkdown(data) {
-  const title = extractTitle(data.content);
+// Generate Markdown with media, reply, and quote metadata.
+function generateMarkdown(data, mediaResults = []) {
+  const title = extractTitle(data.content || '圖片貼文');
   const created = formatDateTime(data.timestamp);
   const platformName = data.platform === 'x' ? 'Twitter/X' : 'Threads';
 
@@ -318,7 +398,21 @@ summary:
 ---`;
 
   // 正文
-  let body = `\n\n${data.content}\n`;
+  let body = `\n\n${data.content || ''}\n`;
+
+  if (mediaResults.length > 0) {
+    body += `
+---
+
+## 圖片
+
+${mediaResults.map((item) => {
+    const alt = escapeMarkdownAlt(item.alt);
+    const target = item.failed ? item.url : item.path;
+    return `![${alt}](<${String(target).replace(/>/g, '%3E')}>)`;
+  }).join('\n\n')}
+`;
+  }
 
   // 如果有引用，加入引用區塊
   if (data.quoted && data.quoted.content) {
@@ -364,13 +458,17 @@ function generateFilename(data) {
   const minutes = String(date.getMinutes()).padStart(2, '0');
 
   // 取首 25 字作為摘要（以 code point 切割避免切斷 emoji），移除不合法的檔名字元
-  const summary = Array.from(data.content.replace(/\n/g, ' '))
+  const summary = Array.from((data.content || '圖片貼文').replace(/\n/g, ' '))
     .slice(0, 25)
     .join('')
     .replace(/[\\/:*?"<>|]/g, '')
     .trim();
 
   return `${dateStr}_${hours}${minutes}_${summary}.md`;
+}
+
+function escapeMarkdownAlt(text) {
+  return String(text || '圖片').replace(/[\[\]\\]/g, '\\$&');
 }
 
 // 格式化日期時間 (YYYY-MM-DD HH:mm)
@@ -411,16 +509,27 @@ function apiBase(port) {
 
 // 儲存到 Obsidian
 async function saveToObsidian(content, filename, apiKey, port) {
+  return saveFileToObsidian(content, filename, apiKey, port, 'text/markdown');
+}
+
+async function saveFileToObsidian(content, filename, apiKey, port, contentType) {
   const url = `${apiBase(port)}/vault/${encodeURIComponent(filename)}`;
 
-  const response = await fetch(url, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'text/markdown'
-    },
-    body: content
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': contentType
+      },
+      body: content
+    });
+  } catch (error) {
+    error.isObsidianApiError = true;
+    error.isObsidianConnectionError = true;
+    throw error;
+  }
 
   // 204 No Content 也算成功
   if (!response.ok && response.status !== 204) {
@@ -431,7 +540,9 @@ async function saveToObsidian(content, filename, apiKey, port) {
     } catch {
       // 忽略 JSON 解析錯誤
     }
-    throw new Error(errorMessage);
+    const error = new Error(errorMessage);
+    error.isObsidianApiError = true;
+    throw error;
   }
 }
 

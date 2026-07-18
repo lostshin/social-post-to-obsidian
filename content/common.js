@@ -164,6 +164,7 @@ var SP2O = (function () {
 
       // 長推文的完整內容在 note_tweet
       const text = tweet.note_tweet?.note_tweet_results?.result?.text || legacy.full_text || '';
+      const media = extractXMedia(tweet);
 
       let quoted = null;
       const quotedResult = tweet.quoted_status_result?.result;
@@ -185,11 +186,29 @@ var SP2O = (function () {
         replyTo: legacy.in_reply_to_status_id_str
           ? `https://x.com/${legacy.in_reply_to_screen_name || 'i'}/status/${legacy.in_reply_to_status_id_str}`
           : null,
-        quoted: quoted
+        quoted: quoted,
+        media: media
       };
     } catch (e) {
       return null;
     }
+  }
+
+  // Sync only directly attached photos; videos and animated GIFs are intentionally skipped.
+  function extractXMedia(tweet) {
+    const legacy = tweet.legacy || {};
+    const items = legacy.extended_entities?.media || legacy.entities?.media || [];
+    const seen = new Set();
+
+    return items.flatMap((item, index) => {
+      const url = item.type === 'photo' && (item.media_url_https || item.media_url);
+      if (!url || seen.has(url)) return [];
+      seen.add(url);
+      return [{
+        url: url.replace(/^http:/, 'https:'),
+        alt: item.ext_alt_text || `圖片 ${index + 1}`
+      }];
+    });
   }
 
   // 解析 Threads 發文 mutation 回應
@@ -214,6 +233,8 @@ var SP2O = (function () {
         }
       }
 
+      const media = extractThreadsMedia(post);
+
       let quoted = null;
       const q = post.text_post_app_info?.share_info?.quoted_post;
       if (q) {
@@ -226,11 +247,34 @@ var SP2O = (function () {
         };
       }
 
-      if (!url && !text) return null;
-      return { url: url, text: text, replyTo: null, quoted: quoted };
+      if (!url && !text && media.length === 0) return null;
+      return { url: url, text: text, replyTo: null, quoted: quoted, media: media };
     } catch (e) {
       return null;
     }
+  }
+
+  // Use image_versions2 for single images and carousels; do not treat video covers as photos.
+  function extractThreadsMedia(post) {
+    const items = Array.isArray(post.carousel_media) && post.carousel_media.length > 0
+      ? post.carousel_media
+      : [post];
+    const seen = new Set();
+
+    return items.flatMap((item, index) => {
+      if (Array.isArray(item.video_versions) && item.video_versions.length > 0) return [];
+
+      const candidates = item.image_versions2?.candidates || [];
+      const best = candidates
+        .filter(candidate => candidate.url)
+        .sort((a, b) => ((b.width || 0) * (b.height || 0)) - ((a.width || 0) * (a.height || 0)))[0];
+      if (!best?.url || seen.has(best.url)) return [];
+      seen.add(best.url);
+      return [{
+        url: best.url,
+        alt: item.accessibility_caption || `圖片 ${index + 1}`
+      }];
+    });
   }
 
   // 深度搜尋回應 JSON 中的貼文物件（有 pk + code + user.username 即視為貼文）

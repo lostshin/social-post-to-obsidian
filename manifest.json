@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Social Post to Obsidian",
-  "version": "1.5.0",
-  "description": "發佈 X 與 Threads 貼文後，自動備份至你的 Obsidian Vault",
+  "version": "1.6.0",
+  "description": "發佈 X 與 Threads 貼文後，自動將文字與圖片備份至你的 Obsidian Vault",
   "permissions": [
     "storage",
     "notifications",
@@ -10,7 +10,10 @@
   ],
   "host_permissions": [
     "http://127.0.0.1:27123/*",
-    "https://127.0.0.1:27124/*"
+    "https://127.0.0.1:27124/*",
+    "https://pbs.twimg.com/*",
+    "https://*.cdninstagram.com/*",
+    "https://*.fbcdn.net/*"
   ],
   "background": {
     "service_worker": "background.js"

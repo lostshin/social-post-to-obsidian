@@ -173,11 +173,12 @@
     const quoted = (api && api.quoted) || base.quoted;
     if (quoted) data.quoted = quoted;
     if (api && api.replyTo) data.replyTo = api.replyTo;
+    if (api && api.media?.length) data.media = api.media;
 
     pendingPost = null;
     clearTimeout(pendingTimer);
 
-    if (!data.content) return;
+    if (!data.content && !data.media?.length) return;
     lastFlushAt = Date.now();
 
     SP2O.sendMessage({ type: 'PUBLISH_DRAFT', data: data });
