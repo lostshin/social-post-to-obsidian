@@ -1,14 +1,15 @@
-name: Validate Extension
+name: Release Extension
 
 on:
   push:
-  pull_request:
+    tags:
+      - 'v*'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  validate:
+  release:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -20,6 +21,11 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
+      - name: Verify tag matches manifest
+        run: |
+          manifest_version="$(node -p "require('./manifest.json').version")"
+          test "${GITHUB_REF_NAME}" = "v${manifest_version}"
+
       - name: Validate extension
         run: node scripts/validate-extension.mjs
 
@@ -28,3 +34,8 @@ jobs:
 
       - name: Build Chrome package
         run: ./scripts/package-extension.sh
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/*.zip --generate-notes --title "Social Post to Obsidian ${GITHUB_REF_NAME}"

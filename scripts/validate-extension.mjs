@@ -67,6 +67,30 @@ for (const size of ['16', '32', '48', '128']) {
   }
 }
 
+const storeAssets = {
+  'assets/store/screenshot-overview.png': { width: 1280, height: 800 },
+  'assets/store/small-promo.png': { width: 440, height: 280 }
+};
+
+for (const [path, expected] of Object.entries(storeAssets)) {
+  requireFile(path);
+  const dimensions = readPngSize(path);
+  if (dimensions.width !== expected.width || dimensions.height !== expected.height) {
+    fail(`${path} must be ${expected.width}x${expected.height}, received ${dimensions.width}x${dimensions.height}`);
+  }
+}
+
+for (const path of ['LICENSE', 'PRIVACY.md', 'SECURITY.md', 'CONTRIBUTING.md']) {
+  requireFile(path);
+}
+
+const broadHostPermissions = new Set(['<all_urls>', '*://*/*', 'http://*/*', 'https://*/*']);
+for (const permission of manifest.host_permissions || []) {
+  if (broadHostPermissions.has(permission)) {
+    fail(`broad host permission is not allowed: ${permission}`);
+  }
+}
+
 const javascriptFiles = [
   'background.js',
   ...readdirSync(fromRoot('content')).filter((file) => file.endsWith('.js')).map((file) => join('content', file)),
@@ -77,4 +101,4 @@ for (const path of javascriptFiles) {
   execFileSync(process.execPath, ['--check', fromRoot(path).pathname], { stdio: 'inherit' });
 }
 
-console.log(`Validated Manifest V3 extension v${manifest.version}: ${javascriptFiles.length} scripts, ${referencedFiles.size} referenced assets.`);
+console.log(`Validated Manifest V3 extension v${manifest.version}: ${javascriptFiles.length} scripts, ${referencedFiles.size} referenced assets, ${Object.keys(storeAssets).length} store assets.`);

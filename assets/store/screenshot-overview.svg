@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#30273B" flood-opacity="0.12"/>
+    </filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#D8D0C7" stroke-width="1" opacity="0.28"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="800" fill="#F6F3EE"/>
+  <rect width="1280" height="800" fill="url(#grid)"/>
+  <circle cx="1180" cy="30" r="310" fill="none" stroke="#6E56B3" stroke-width="2" opacity="0.12"/>
+  <circle cx="84" cy="760" r="250" fill="none" stroke="#8B672E" stroke-width="2" opacity="0.10"/>
+  <g font-family="Avenir Next, Avenir, sans-serif">
+    <g transform="translate(72 54)">
+      <rect width="62" height="62" rx="16" fill="#25222B"/>
+      <path d="M15 15h32a7 7 0 0 1 7 7v17a7 7 0 0 1-7 7H34L23 55v-9h-8a7 7 0 0 1-7-7V22a7 7 0 0 1 7-7Z" fill="#FFFDF9"/>
+      <path d="M31 21v15m-6-6 6 6 6-6" fill="none" stroke="#6E56B3" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <text x="154" y="79" fill="#25222B" font-size="24" font-weight="750">Social Post to Obsidian</text>
+    <text x="154" y="105" fill="#77717E" font-size="14" font-weight="600" letter-spacing="1.3">LOCAL-FIRST · OPEN SOURCE · CHROME MV3</text>
+    <text x="640" y="186" text-anchor="middle" fill="#25222B" font-size="48" font-weight="760" letter-spacing="-1.4">從發佈，到自己的 Vault</text>
+    <text x="640" y="226" text-anchor="middle" fill="#6C6672" font-size="20" font-weight="500">文字、來源資訊與靜態圖片，直接在本機完成備份</text>
+    <g filter="url(#shadow)">
+      <rect x="72" y="300" width="320" height="302" rx="22" fill="#FFFDF9" stroke="#DCD4CB"/>
+      <rect x="480" y="300" width="320" height="302" rx="22" fill="#25222B"/>
+      <rect x="888" y="300" width="320" height="302" rx="22" fill="#FFFDF9" stroke="#DCD4CB"/>
+    </g>
+    <text x="104" y="344" fill="#6E56B3" font-size="12" font-weight="750" letter-spacing="1.8">01 · PUBLISH</text>
+    <text x="104" y="381" fill="#25222B" font-size="26" font-weight="750">X / Threads</text>
+    <rect x="104" y="410" width="256" height="78" rx="12" fill="#F6F3EE"/>
+    <rect x="120" y="428" width="168" height="8" rx="4" fill="#B7B0BA"/>
+    <rect x="120" y="446" width="214" height="8" rx="4" fill="#D0C9D1"/>
+    <rect x="120" y="464" width="126" height="8" rx="4" fill="#D0C9D1"/>
+    <rect x="104" y="504" width="76" height="62" rx="10" fill="#E9E2D7"/>
+    <rect x="190" y="504" width="76" height="62" rx="10" fill="#DFD7EA"/>
+    <rect x="276" y="504" width="84" height="62" rx="10" fill="#E3E9E2"/>
+    <text x="512" y="344" fill="#BCAAEF" font-size="12" font-weight="750" letter-spacing="1.8">02 · BACK UP</text>
+    <text x="512" y="381" fill="#FFFDF9" font-size="26" font-weight="750">瀏覽器內處理</text>
+    <circle cx="640" cy="472" r="64" fill="#332F39" stroke="#6E56B3" stroke-width="2"/>
+    <path d="M606 440h68a13 13 0 0 1 13 13v37a13 13 0 0 1-13 13h-27l-24 19v-19h-17a13 13 0 0 1-13-13v-37a13 13 0 0 1 13-13Z" fill="#FFFDF9"/>
+    <path d="M640 452v30m-13-13 13 13 13-13" fill="none" stroke="#6E56B3" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="640" y="572" text-anchor="middle" fill="#C9C3CE" font-size="14">離線時排隊 · 連線後補存</text>
+    <text x="920" y="344" fill="#6E56B3" font-size="12" font-weight="750" letter-spacing="1.8">03 · KEEP</text>
+    <text x="920" y="381" fill="#25222B" font-size="26" font-weight="750">Obsidian Vault</text>
+    <circle cx="938" cy="426" r="5" fill="#6E56B3"/>
+    <text x="954" y="431" fill="#47424D" font-size="14" font-weight="700">個人創作 / 社群推文</text>
+    <path d="M938 447v32h16" fill="none" stroke="#C7BFD0" stroke-width="2"/>
+    <rect x="956" y="459" width="22" height="26" rx="4" fill="#E8E1F5"/>
+    <text x="990" y="478" fill="#6C6672" font-size="13">貼文.md</text>
+    <circle cx="938" cy="522" r="5" fill="#8B672E"/>
+    <text x="954" y="527" fill="#47424D" font-size="14" font-weight="700">附件 / Social Post to Obsidian</text>
+    <rect x="954" y="544" width="54" height="34" rx="7" fill="#E9E2D7"/>
+    <rect x="1016" y="544" width="54" height="34" rx="7" fill="#DFD7EA"/>
+    <rect x="1078" y="544" width="54" height="34" rx="7" fill="#E3E9E2"/>
+    <path d="M410 452h52" stroke="#6E56B3" stroke-width="3" stroke-linecap="round"/>
+    <path d="m451 443 11 9-11 9" fill="none" stroke="#6E56B3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M818 452h52" stroke="#6E56B3" stroke-width="3" stroke-linecap="round"/>
+    <path d="m859 443 11 9-11 9" fill="none" stroke="#6E56B3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <g transform="translate(239 672)">
+      <rect width="802" height="64" rx="16" fill="#FFFDF9" stroke="#DCD4CB"/>
+      <circle cx="44" cy="32" r="6" fill="#397A5B"/>
+      <text x="62" y="38" fill="#47424D" font-size="15" font-weight="700">無開發者雲端</text>
+      <circle cx="286" cy="32" r="6" fill="#6E56B3"/>
+      <text x="304" y="38" fill="#47424D" font-size="15" font-weight="700">無遙測與分析</text>
+      <circle cx="538" cy="32" r="6" fill="#8B672E"/>
+      <text x="556" y="38" fill="#47424D" font-size="15" font-weight="700">路徑完全自訂</text>
+    </g>
+  </g>
+</svg>

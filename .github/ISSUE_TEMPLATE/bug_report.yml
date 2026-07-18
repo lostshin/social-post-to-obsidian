@@ -1,0 +1,53 @@
+name: Bug 回報
+description: 回報可以重現的錯誤
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        請勿貼出 API Key、cookies、私人貼文或完整平台回應。安全漏洞請依 SECURITY.md 私下回報。
+  - type: input
+    id: version
+    attributes:
+      label: 擴充功能版本
+      placeholder: 例如 1.7.0
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 發生平台
+      options:
+        - X
+        - Threads
+        - Popup／設定
+        - Obsidian／Local REST API
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 重現步驟
+      description: 請提供能重現問題的最小步驟。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 預期結果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 實際結果
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境
+      description: Chrome、Obsidian、Local REST API 與作業系統版本。
