@@ -94,7 +94,7 @@ async function handlePublishDraft(data, tabId) {
   try {
     lastPublishTimestamp[data.platform] = data.timestamp;
 
-    const settings = await chrome.storage.local.get(['apiKey', 'port', 'basePath']);
+    const settings = await chrome.storage.local.get(['apiKey', 'port', 'basePath', 'mediaPath']);
 
     if (!settings.apiKey) {
       notifyResult(tabId, false, '請先在擴充功能設定中輸入 Obsidian API Key');
@@ -152,11 +152,13 @@ const IMAGE_EXTENSIONS = {
   'image/webp': 'webp',
   'image/avif': 'avif'
 };
+const DEFAULT_MEDIA_PATH = '附件/Social Post to Obsidian';
 
 // Write images before Markdown. Retries overwrite the same paths, so the operation is idempotent.
 async function savePostBundle(data, fullPath, filename, settings) {
   const media = Array.isArray(data.media) ? data.media.slice(0, 20) : [];
   const noteDirectory = fullPath.includes('/') ? fullPath.slice(0, fullPath.lastIndexOf('/')) : '';
+  const mediaDirectory = normalizeVaultPath(settings.mediaPath || DEFAULT_MEDIA_PATH);
   const assetFolder = filename.replace(/\.md$/i, '');
   const mediaResults = [];
 
@@ -165,8 +167,8 @@ async function savePostBundle(data, fullPath, filename, settings) {
     try {
       const image = await downloadImage(item.url);
       const imageName = `image-${String(index + 1).padStart(2, '0')}.${image.extension}`;
-      const relativePath = `_assets/${assetFolder}/${imageName}`;
-      const vaultPath = noteDirectory ? `${noteDirectory}/${relativePath}` : relativePath;
+      const vaultPath = `${mediaDirectory}/${assetFolder}/${imageName}`;
+      const relativePath = relativeVaultPath(noteDirectory, vaultPath);
 
       await saveFileToObsidian(
         image.bytes,
@@ -191,6 +193,27 @@ async function savePostBundle(data, fullPath, filename, settings) {
     savedMedia: mediaResults.filter(item => !item.failed).length,
     failedMedia: mediaResults.filter(item => item.failed).length
   };
+}
+
+function normalizeVaultPath(path) {
+  return String(path || '').split('/').filter(Boolean).join('/');
+}
+
+function relativeVaultPath(fromDirectory, targetPath) {
+  const fromParts = normalizeVaultPath(fromDirectory).split('/').filter(Boolean);
+  const targetParts = normalizeVaultPath(targetPath).split('/').filter(Boolean);
+  let commonParts = 0;
+
+  while (commonParts < fromParts.length
+    && commonParts < targetParts.length
+    && fromParts[commonParts] === targetParts[commonParts]) {
+    commonParts++;
+  }
+
+  return [
+    ...Array(fromParts.length - commonParts).fill('..'),
+    ...targetParts.slice(commonParts)
+  ].join('/');
 }
 
 async function downloadImage(url) {
@@ -239,7 +262,7 @@ async function deleteDraft(filepath, apiKey, port) {
 // 處理貼文存檔（舊版相容）
 async function handleSavePost(data, tabId) {
   try {
-    const settings = await chrome.storage.local.get(['apiKey', 'port', 'basePath']);
+    const settings = await chrome.storage.local.get(['apiKey', 'port', 'basePath', 'mediaPath']);
 
     if (!settings.apiKey) {
       notifyResult(tabId, false, '請先在擴充功能設定中輸入 Obsidian API Key');
@@ -290,7 +313,7 @@ async function retryOfflineQueue() {
     return;
   }
 
-  const settings = await chrome.storage.local.get(['apiKey', 'port']);
+  const settings = await chrome.storage.local.get(['apiKey', 'port', 'mediaPath']);
   if (!settings.apiKey) return;
 
   const remaining = [];

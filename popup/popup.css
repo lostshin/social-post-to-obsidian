@@ -272,6 +272,11 @@ form {
   margin-bottom: 0;
 }
 
+.media-path-group {
+  margin-top: 14px;
+  margin-bottom: 0;
+}
+
 .label-row {
   display: flex;
   align-items: baseline;

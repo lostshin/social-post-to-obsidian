@@ -15,7 +15,7 @@ function loadCommon() {
     chrome: {
       runtime: {
         id: 'test',
-        getManifest: () => ({ version: '1.6.0' }),
+        getManifest: () => ({ version: '1.7.0' }),
         onMessage: { addListener() {} }
       }
     }
@@ -99,7 +99,7 @@ function loadBackground() {
   const chrome = {
     runtime: {
       lastError: null,
-      getManifest: () => ({ version: '1.6.0' }),
+      getManifest: () => ({ version: '1.7.0' }),
       onMessage: { addListener() {} }
     },
     storage: {
@@ -173,15 +173,26 @@ const postData = {
 };
 const filename = '2026-07-18_1100_圖片同步測試.md';
 const path = `個人創作/社群推文/${filename}`;
-const settings = { apiKey: 'test-key', port: 27123, basePath: '個人創作/社群推文' };
+const settings = {
+  apiKey: 'test-key',
+  port: 27123,
+  basePath: '個人創作/社群推文',
+  mediaPath: '附件/Social Post to Obsidian'
+};
 
 const result = await background.context.savePostBundle(postData, path, filename, settings);
 assert.deepEqual(JSON.parse(JSON.stringify(result)), { savedMedia: 1, failedMedia: 1 });
 assert.equal(background.requests.length, 2);
 assert.equal(background.requests[0].init.headers['Content-Type'], 'image/jpeg');
-assert.match(decodeURIComponent(background.requests[0].url), /_assets\/2026-07-18_1100_圖片同步測試\/image-01\.jpg$/);
+assert.match(
+  decodeURIComponent(background.requests[0].url),
+  /附件\/Social Post to Obsidian\/2026-07-18_1100_圖片同步測試\/image-01\.jpg$/
+);
 const markdown = background.requests[1].init.body;
-assert.match(markdown, /!\[成功圖片\]\(<_assets\/2026-07-18_1100_圖片同步測試\/image-01\.jpg>\)/);
+assert.match(
+  markdown,
+  /!\[成功圖片\]\(<\.\.\/\.\.\/附件\/Social Post to Obsidian\/2026-07-18_1100_圖片同步測試\/image-01\.jpg>\)/
+);
 assert.match(markdown, /!\[失敗圖片\]\(<https:\/\/pbs\.twimg\.com\/media\/missing\.jpg>\)/);
 
 const imageOnlyFilename = background.context.generateFilename({
@@ -204,9 +215,14 @@ assert.equal('markdown' in background.stored.offlineQueue[0], false);
 
 background.stored.apiKey = 'test-key';
 background.stored.port = 27123;
+background.stored.mediaPath = '附件/Social Post to Obsidian';
 background.setLocalMode('ok');
 await background.context.retryOfflineQueue();
 assert.deepEqual(JSON.parse(JSON.stringify(background.stored.offlineQueue)), []);
 assert.equal(background.stored.recentSaves[0].filename, filename);
+assert.match(
+  decodeURIComponent(background.requests.at(-2).url),
+  /附件\/Social Post to Obsidian\/2026-07-18_1100_圖片同步測試\/image-01\.jpg$/
+);
 
 console.log('Media parser and Vault bundle tests passed.');

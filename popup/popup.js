@@ -2,6 +2,7 @@
 const apiKeyInput = document.getElementById('apiKey');
 const portInput = document.getElementById('port');
 const basePathInput = document.getElementById('basePath');
+const mediaPathInput = document.getElementById('mediaPath');
 const settingsPanel = document.getElementById('settingsPanel');
 const settingsForm = document.getElementById('settingsForm');
 const toggleApiKey = document.getElementById('toggleApiKey');
@@ -21,7 +22,7 @@ function readPort() {
 
 // 載入已儲存的設定
 async function loadSettings() {
-  const settings = await chrome.storage.local.get(['apiKey', 'port', 'basePath']);
+  const settings = await chrome.storage.local.get(['apiKey', 'port', 'basePath', 'mediaPath']);
 
   if (settings.apiKey) {
     apiKeyInput.value = settings.apiKey;
@@ -32,6 +33,9 @@ async function loadSettings() {
   if (settings.basePath) {
     basePathInput.value = settings.basePath;
   }
+  if (settings.mediaPath) {
+    mediaPathInput.value = settings.mediaPath;
+  }
 
   settingsPanel.open = !settings.apiKey;
 }
@@ -41,6 +45,7 @@ async function saveSettings() {
   const apiKey = apiKeyInput.value.trim();
   const port = readPort();
   const basePath = basePathInput.value.trim() || '個人創作/社群推文';
+  const mediaPath = mediaPathInput.value.trim() || '附件/Social Post to Obsidian';
 
   if (!apiKey) {
     showStatus('請輸入 API Key', 'error');
@@ -53,7 +58,7 @@ async function saveSettings() {
     return;
   }
 
-  await chrome.storage.local.set({ apiKey, port, basePath });
+  await chrome.storage.local.set({ apiKey, port, basePath, mediaPath });
   showStatus('設定已儲存', 'success');
   checkConnection();
 }
