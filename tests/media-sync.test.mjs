@@ -32,6 +32,65 @@ function loadCommon() {
 
 const common = loadCommon();
 
+function loadTwitterExtractor(nodes) {
+  let pipelineConfig = null;
+  const dialog = {
+    querySelectorAll(selector) {
+      return nodes.filter(node => (
+        !selector.includes('[contenteditable="true"]')
+        || node.getAttribute('contenteditable') === 'true'
+      ));
+    }
+  };
+  const context = vm.createContext({
+    console,
+    window: { location: { href: 'https://x.com/compose/post' } },
+    document: {
+      querySelector: selector => selector === '[role="dialog"]' ? dialog : null,
+      querySelectorAll: () => [],
+      addEventListener() {}
+    },
+    SP2O: {
+      parseCreateTweet() {},
+      createPublishPipeline(config) {
+        pipelineConfig = config;
+        return { capturePost() {}, init() {} };
+      }
+    }
+  });
+  vm.runInContext(readFileSync('content/twitter.js', 'utf8'), context);
+  return pipelineConfig;
+}
+
+function createTwitterTextarea(testId, text, contenteditable = null) {
+  return {
+    innerText: text,
+    textContent: text,
+    getAttribute(name) {
+      if (name === 'data-testid') return testId;
+      if (name === 'contenteditable') return contenteditable;
+      return null;
+    },
+    querySelector() { return null; }
+  };
+}
+
+// X 的 label、RichTextInputContainer 與真正編輯器會共用 tweetTextarea_ 前綴，
+// 只有 contenteditable 節點是使用者輸入，否則單則草稿會被擷取三次。
+const twitterSingleDraft = loadTwitterExtractor([
+  createTwitterTextarea('tweetTextarea_0_label', '同一段草稿'),
+  createTwitterTextarea('tweetTextarea_0RichTextInputContainer', '同一段草稿'),
+  createTwitterTextarea('tweetTextarea_0', '同一段草稿', 'true')
+]);
+assert.equal(twitterSingleDraft.getTextContent(), '同一段草稿');
+
+// 真正的兩個串文編輯器即使文字相同，仍須保留為兩則，不能按文字去重。
+const twitterIdenticalThread = loadTwitterExtractor([
+  createTwitterTextarea('tweetTextarea_0', '相同內容', 'true'),
+  createTwitterTextarea('tweetTextarea_1', '相同內容', 'true')
+]);
+assert.equal(twitterIdenticalThread.getTextContent(), '相同內容\n\n---\n\n相同內容');
+
 function sendNativeHostMessage(message, configDirectory) {
   const payload = Buffer.from(JSON.stringify(message));
   const header = Buffer.alloc(4);

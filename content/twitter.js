@@ -3,6 +3,7 @@
   'use strict';
 
   const LOG = '[Social Post to Obsidian]';
+  const EDITOR_SELECTOR = '[data-testid^="tweetTextarea_"][contenteditable="true"]';
 
   // 檢查是否是最終的發文按鈕
   function isPostButton(element) {
@@ -40,7 +41,7 @@
   function getTextContent() {
     // 有發文 dialog 時限定在 dialog 內找，避免同時抓到時間軸上的內嵌輸入框
     const scope = document.querySelector('[role="dialog"]') || document;
-    const inputs = scope.querySelectorAll('[data-testid^="tweetTextarea_"]');
+    const inputs = scope.querySelectorAll(EDITOR_SELECTOR);
 
     if (!inputs || inputs.length === 0) {
       console.log(LOG, 'Twitter: 找不到輸入框');
@@ -130,7 +131,7 @@
     parseResponse: SP2O.parseCreateTweet,
     getTextContent: getTextContent,
     getQuoted: getQuotedTweet,
-    getDraftInputs: () => document.querySelectorAll('[data-testid^="tweetTextarea_"]')
+    getDraftInputs: () => document.querySelectorAll(EDITOR_SELECTOR)
   });
 
   // 設定事件監聽
@@ -164,7 +165,7 @@
     // 鍵盤發文（Cmd/Ctrl+Enter）：舊版只偵測點擊，鍵盤發文會漏存
     document.addEventListener('keydown', (e) => {
       if (!(e.metaKey || e.ctrlKey) || e.key !== 'Enter') return;
-      if (!e.target.closest('[data-testid^="tweetTextarea_"]')) return;
+      if (!e.target.closest(EDITOR_SELECTOR)) return;
 
       console.log(LOG, 'Twitter: 偵測到鍵盤發文 (Cmd/Ctrl+Enter)');
       pipeline.capturePost();
