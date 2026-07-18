@@ -660,8 +660,9 @@ function createContentPreview(content, maxLength = 160) {
 }
 
 function createPostPreview(data) {
-  const text = createContentPreview(data?.content);
-  if (text) return text;
+  const threadItems = getThreadItems(data);
+  const text = createContentPreview(threadItems[0] || data?.content);
+  if (text) return threadItems.length > 1 ? `${text} · 共 ${threadItems.length} 則` : text;
   const mediaCount = Array.isArray(data?.media) ? data.media.length : 0;
   return mediaCount > 0 ? `圖片貼文 · ${mediaCount} 張圖片` : '沒有文字內容';
 }
@@ -679,96 +680,136 @@ function notifyResult(tabId, ok, text) {
   }
 }
 
+function getThreadItems(data) {
+  if (!Array.isArray(data?.thread)) return [];
+  return data.thread
+    .map(item => String(item || '').trim())
+    .filter(Boolean);
+}
+
+function renderContentSection(data, singleHeading, threadHeading) {
+  const threadItems = getThreadItems(data);
+  if (threadItems.length > 1) {
+    const posts = threadItems.map((item, index) => (
+      `### ${index + 1} / ${threadItems.length}\n\n${item}`
+    ));
+    return `## ${threadHeading}\n\n${posts.join('\n\n---\n\n')}`;
+  }
+  return `## ${singleHeading}\n\n${data.content || ''}`;
+}
+
+function markdownLinkTarget(target) {
+  return String(target || '').replace(/>/g, '%3E');
+}
+
 // 產生草稿 Markdown 內容
 function generateDraftMarkdown(data) {
   const platformName = platformDisplayName(data.platform);
   const updated = formatDateTime(data.timestamp);
+  const threadItems = getThreadItems(data);
+  const frontmatter = [
+    '---',
+    `title: ${escapeYaml(`${platformName} 草稿`)}`,
+    `updated: ${escapeYaml(updated)}`,
+    `platform: ${escapeYaml(platformName)}`,
+    `source: ${escapeYaml(data.platform)}`,
+    `status: ${escapeYaml('draft')}`,
+    ...(threadItems.length > 1 ? [`thread_count: ${threadItems.length}`] : []),
+    'tags:',
+    `  - ${escapeYaml('社群草稿')}`,
+    `  - ${escapeYaml(platformName)}`,
+    ...(threadItems.length > 1 ? [`  - ${escapeYaml('串文')}`] : []),
+    '---'
+  ].join('\n');
+  const notice = [
+    '> [!warning] 未發佈草稿',
+    `> **平台**：${platformName}  `,
+    `> **最後更新**：${updated}  `,
+    '> 發佈成功後，這份草稿檔會自動移除。'
+  ].join('\n');
 
-  return `---
-title: 草稿
-platform: ${platformName}
-updated: ${updated}
-status: draft
----
-
-${data.content}
-`;
+  return `${frontmatter}\n\n${notice}\n\n${renderContentSection(
+    data,
+    '草稿內容',
+    '串文草稿'
+  )}\n`;
 }
 
 // Generate Markdown with media, reply, and quote metadata.
 function generateMarkdown(data, mediaResults = []) {
-  const title = extractTitle(data.content || '圖片貼文');
+  const threadItems = getThreadItems(data);
+  const title = extractTitle(threadItems[0] || data.content || '圖片貼文');
   const created = formatDateTime(data.timestamp);
   const platformName = platformDisplayName(data.platform);
-
-  // 基本 frontmatter
-  let frontmatter = `---
-title: ${escapeYaml(title)}
-created: ${created}
-source: ${data.platform}
-source_url: ${data.url}
-tags:
-  - 社群貼文
-  - ${platformName}`;
+  const frontmatter = [
+    '---',
+    `title: ${escapeYaml(title)}`,
+    `created: ${escapeYaml(created)}`,
+    `platform: ${escapeYaml(platformName)}`,
+    `source: ${escapeYaml(data.platform)}`,
+    `source_url: ${escapeYaml(data.url)}`,
+    `status: ${escapeYaml('published')}`,
+    ...(threadItems.length > 1 ? [`thread_count: ${threadItems.length}`] : [])
+  ];
 
   // 如果是回覆，記下被回覆的貼文連結
   if (data.replyTo) {
-    frontmatter += `
-reply_to: ${data.replyTo}`;
+    frontmatter.push(`reply_to: ${escapeYaml(data.replyTo)}`);
   }
 
   // 如果有引用，加入引用資訊
   if (data.quoted) {
-    frontmatter += `
-quoted_from: ${escapeYaml('@' + data.quoted.author)}
-quoted_author_name: ${escapeYaml(data.quoted.authorName)}
-quoted_url: ${data.quoted.url}`;
+    frontmatter.push(
+      `quoted_from: ${escapeYaml('@' + data.quoted.author)}`,
+      `quoted_author_name: ${escapeYaml(data.quoted.authorName)}`,
+      `quoted_url: ${escapeYaml(data.quoted.url)}`
+    );
   }
 
-  frontmatter += `
-summary:
----`;
+  frontmatter.push(
+    'tags:',
+    `  - ${escapeYaml('社群貼文')}`,
+    `  - ${escapeYaml(platformName)}`,
+    ...(threadItems.length > 1 ? [`  - ${escapeYaml('串文')}`] : []),
+    `summary: ${escapeYaml('')}`,
+    '---'
+  );
 
-  // 正文
-  let body = `\n\n${data.content || ''}\n`;
+  const info = [
+    '> [!info] 貼文資訊',
+    `> **平台**：${platformName}  `,
+    `> **發佈時間**：${created}${data.url || data.replyTo ? '  ' : ''}`,
+    ...(data.url ? [
+      `> **原始貼文**：[在 ${platformName} 查看](<${markdownLinkTarget(data.url)}>)${data.replyTo ? '  ' : ''}`
+    ] : []),
+    ...(data.replyTo ? [
+      `> **回覆對象**：[查看原始貼文](<${markdownLinkTarget(data.replyTo)}>)`
+    ] : [])
+  ].join('\n');
+  const sections = [info];
+
+  if (data.content || threadItems.length > 0) {
+    sections.push(renderContentSection(data, '貼文內容', '串文內容'));
+  }
 
   if (mediaResults.length > 0) {
-    body += `
----
-
-## 圖片
-
-${mediaResults.map((item) => {
-    const alt = escapeMarkdownAlt(item.alt);
-    const target = item.failed ? item.url : item.path;
-    return `![${alt}](<${String(target).replace(/>/g, '%3E')}>)`;
-  }).join('\n\n')}
-`;
+    sections.push(`## 圖片\n\n${mediaResults.map((item) => {
+      const alt = escapeMarkdownAlt(item.alt);
+      const target = item.failed ? item.url : item.path;
+      return `![${alt}](<${markdownLinkTarget(target)}>)`;
+    }).join('\n\n')}`);
   }
 
   // 如果有引用，加入引用區塊
   if (data.quoted && data.quoted.content) {
     const quotedLines = data.quoted.content.split('\n').map(line => '> ' + line).join('\n');
-    body += `
----
-
-## 引用貼文
-
-> **[@${data.quoted.author}](${data.quoted.url})** 的貼文：
->
-${quotedLines}
-`;
+    const quotedAuthor = data.quoted.url
+      ? `[@${data.quoted.author}](<${markdownLinkTarget(data.quoted.url)}>)`
+      : `@${data.quoted.author}`;
+    sections.push(`> [!quote] 引用貼文\n> ${quotedAuthor}\n>\n${quotedLines}`);
   }
 
-  body += `
----
-
-## 相關筆記
-
-- [[]]
-`;
-
-  return frontmatter + body;
+  return `${frontmatter.join('\n')}\n\n${sections.join('\n\n---\n\n')}\n`;
 }
 
 // 擷取標題（首句，最多 30 字）
@@ -827,11 +868,8 @@ function formatDate(date) {
 
 // 跳脫 YAML 特殊字元
 function escapeYaml(str) {
-  // 如果包含冒號、引號等特殊字元，用雙引號包起來
-  if (/[:\[\]{}#&*!|>'"%@`\\]/.test(str) || str.includes('\n')) {
-    return `"${str.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-  }
-  return str;
+  // JSON 字串也是合法的 YAML 雙引號字串，可避免日期、yes/no 等值被推斷成其他型別。
+  return JSON.stringify(String(str ?? ''));
 }
 
 // 依 port 決定協定（27124 是 Local REST API 的 HTTPS 埠）

@@ -82,13 +82,8 @@
       return null;
     }
 
-    // 多則串文用分隔線連接
-    const result = texts.length > 1
-      ? texts.join('\n\n---\n\n')
-      : texts[0];
-
     console.log(LOG, `Twitter: 擷取到 ${texts.length} 則內容`);
-    return result;
+    return texts;
   }
 
   // 擷取引用推文資訊（DOM 備援；正式資料以攔截到的發文 API 回應為準）

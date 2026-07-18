@@ -294,12 +294,12 @@ var SP2O = (function () {
 
   // ===== 發佈與草稿共用流程 =====
   // twitter.js 與 threads.js 共用同一套狀態機；平台檔只提供 DOM 擷取與按鈕偵測
-  const DEBOUNCE_DELAY = 1500;     // 草稿 debounce（毫秒）
+  const DEBOUNCE_DELAY = 500;      // 草稿 debounce（毫秒）
   const API_WAIT_TIMEOUT = 8000;   // 等待發文 API 回應的時限（毫秒）
   const THREAD_WINDOW = 15000;     // 串文後續 API 回應的忽略時窗（毫秒）
   const OBSERVER_SCAN_DELAY = 150; // 合併同批 DOM mutation 再掃描輸入框（毫秒）
 
-  // config：platform、label、parseResponse(text)、getTextContent()、
+  // config：platform、label、parseResponse(text)、getTextContent()（回傳單則字串或串文陣列）、
   //         getQuoted()（可省略）、getDraftInputs()（回傳已過濾至 composer 的輸入框）
   function createPublishPipeline(config) {
     const { platform, label, parseResponse, getTextContent, getQuoted, getDraftInputs } = config;
@@ -311,17 +311,32 @@ var SP2O = (function () {
     // 8 秒備援先送出後保留原始資料；遲到的 API 回應用它重送同一筆以修正 url/media
     let fallbackBase = null;
 
+    function readComposerContent() {
+      const captured = getTextContent();
+      if (Array.isArray(captured)) {
+        const items = captured
+          .map(item => String(item || '').trim())
+          .filter(Boolean);
+        return {
+          content: items.join('\n\n---\n\n'),
+          thread: items.length > 1 ? items : null
+        };
+      }
+      return { content: String(captured || '').trim(), thread: null };
+    }
+
     // 發佈觸發（點擊/鍵盤）：擷取內容後等發文 API 回應補上正確資料
     function capturePost() {
-      const content = getTextContent();
-      if (!content || content.trim() === '') {
+      const captured = readComposerContent();
+      if (!captured.content) {
         console.log(LOG, label + ': 貼文內容為空，跳過');
         return;
       }
 
       clearTimeout(debounceTimer);
       pendingPost = {
-        content: content.trim(),
+        content: captured.content,
+        thread: captured.thread,
         quoted: getQuoted ? getQuoted() : null,
         timestamp: new Date().toISOString()
       };
@@ -353,6 +368,7 @@ var SP2O = (function () {
       if (quoted) data.quoted = quoted;
       if (api && api.replyTo) data.replyTo = api.replyTo;
       if (api && api.media?.length) data.media = api.media;
+      if (base.thread?.length > 1) data.thread = base.thread;
 
       pendingPost = null;
       clearTimeout(pendingTimer);
@@ -391,13 +407,14 @@ var SP2O = (function () {
 
     // 草稿觸發（debounce 到期或 blur）：擷取內容送 background 暫存
     function captureDraft() {
-      const content = getTextContent();
-      if (!content || content.trim() === '') return;
+      const captured = readComposerContent();
+      if (!captured.content) return;
 
       sendMessage({
         type: 'SAVE_DRAFT',
         data: {
-          content: content.trim(),
+          content: captured.content,
+          thread: captured.thread,
           platform: platform,
           timestamp: new Date().toISOString()
         }

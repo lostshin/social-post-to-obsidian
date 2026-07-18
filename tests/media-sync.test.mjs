@@ -7,6 +7,7 @@ import vm from 'node:vm';
 
 // Keep local-time filename assertions deterministic across developer machines and CI.
 process.env.TZ = 'Asia/Taipei';
+const manifestVersion = JSON.parse(readFileSync('manifest.json', 'utf8')).version;
 
 function loadCommon() {
   const context = vm.createContext({
@@ -21,7 +22,7 @@ function loadCommon() {
     chrome: {
       runtime: {
         id: 'test',
-        getManifest: () => ({ version: '2.2.0' }),
+        getManifest: () => ({ version: manifestVersion }),
         onMessage: { addListener() {} }
       }
     }
@@ -82,14 +83,126 @@ const twitterSingleDraft = loadTwitterExtractor([
   createTwitterTextarea('tweetTextarea_0RichTextInputContainer', '同一段草稿'),
   createTwitterTextarea('tweetTextarea_0', '同一段草稿', 'true')
 ]);
-assert.equal(twitterSingleDraft.getTextContent(), '同一段草稿');
+assert.deepEqual(
+  JSON.parse(JSON.stringify(twitterSingleDraft.getTextContent())),
+  ['同一段草稿']
+);
 
 // 真正的兩個串文編輯器即使文字相同，仍須保留為兩則，不能按文字去重。
 const twitterIdenticalThread = loadTwitterExtractor([
   createTwitterTextarea('tweetTextarea_0', '相同內容', 'true'),
   createTwitterTextarea('tweetTextarea_1', '相同內容', 'true')
 ]);
-assert.equal(twitterIdenticalThread.getTextContent(), '相同內容\n\n---\n\n相同內容');
+assert.deepEqual(
+  JSON.parse(JSON.stringify(twitterIdenticalThread.getTextContent())),
+  ['相同內容', '相同內容']
+);
+
+function loadThreadsExtractor(nodes) {
+  let pipelineConfig = null;
+  const dialog = { querySelectorAll: () => nodes };
+  const context = vm.createContext({
+    console,
+    document: {
+      querySelector: selector => selector === '[role="dialog"]' ? dialog : null,
+      querySelectorAll: () => [],
+      addEventListener() {}
+    },
+    SP2O: {
+      parseThreadsCreate() {},
+      createPublishPipeline(config) {
+        pipelineConfig = config;
+        return { capturePost() {}, init() {} };
+      }
+    }
+  });
+  vm.runInContext(readFileSync('content/threads.js', 'utf8'), context);
+  return pipelineConfig;
+}
+
+const threadsThread = loadThreadsExtractor([
+  createTwitterTextarea('threads_0', 'Threads 第一則', 'true'),
+  createTwitterTextarea('threads_1', 'Threads 第二則', 'true')
+]);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(threadsThread.getTextContent())),
+  ['Threads 第一則', 'Threads 第二則']
+);
+
+function loadDraftPipelineHarness(contentItems) {
+  const messages = [];
+  const timers = [];
+  const inputListeners = {};
+  const input = {
+    addEventListener(type, listener) { inputListeners[type] = listener; }
+  };
+  const context = vm.createContext({
+    console,
+    setTimeout(callback, delay) {
+      timers.push({ callback, delay });
+      return timers.length;
+    },
+    clearTimeout() {},
+    MutationObserver: class { observe() {} },
+    window: {
+      location: { href: 'https://x.com/compose/post' },
+      addEventListener() {},
+      postMessage() {}
+    },
+    document: { readyState: 'complete', body: {} },
+    chrome: {
+      runtime: {
+        id: 'test',
+        lastError: null,
+        getManifest: () => ({ version: manifestVersion }),
+        sendMessage(message, callback) {
+          messages.push(message);
+          callback?.();
+        },
+        onMessage: { addListener() {} }
+      }
+    }
+  });
+  vm.runInContext(readFileSync('content/common.js', 'utf8'), context);
+  const pipeline = context.SP2O.createPublishPipeline({
+    platform: 'x',
+    label: 'Twitter',
+    parseResponse: () => null,
+    getTextContent: () => contentItems,
+    getDraftInputs: () => [input]
+  });
+  pipeline.init(() => {});
+  inputListeners.input();
+  return { messages, pipeline, timers };
+}
+
+const draftPipeline = loadDraftPipelineHarness(['串文第一則', '串文第二則']);
+assert.equal(draftPipeline.timers.at(-1).delay, 500);
+draftPipeline.timers.at(-1).callback();
+assert.equal(draftPipeline.messages.at(-1).data.content, '串文第一則\n\n---\n\n串文第二則');
+assert.deepEqual(
+  JSON.parse(JSON.stringify(draftPipeline.messages.at(-1).data.thread)),
+  ['串文第一則', '串文第二則']
+);
+draftPipeline.pipeline.capturePost();
+assert.equal(draftPipeline.timers.at(-1).delay, 8000);
+draftPipeline.timers.at(-1).callback();
+assert.equal(draftPipeline.messages.at(-1).type, 'PUBLISH_DRAFT');
+assert.deepEqual(
+  JSON.parse(JSON.stringify(draftPipeline.messages.at(-1).data.thread)),
+  ['串文第一則', '串文第二則']
+);
+
+function parseYamlFrontmatter(markdown) {
+  const match = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(markdown);
+  assert.ok(match, 'Markdown must start with YAML frontmatter');
+  const result = spawnSync('/usr/bin/ruby', [
+    '-ryaml', '-rjson', '-e',
+    'puts JSON.generate(YAML.safe_load(STDIN.read, permitted_classes: [], permitted_symbols: [], aliases: false))'
+  ], { input: match[1] });
+  assert.equal(result.status, 0, result.stderr.toString());
+  return JSON.parse(result.stdout.toString());
+}
 
 function sendNativeHostMessage(message, configDirectory) {
   const payload = Buffer.from(JSON.stringify(message));
@@ -266,7 +379,7 @@ function loadBackground() {
   const chrome = {
     runtime: {
       lastError: null,
-      getManifest: () => ({ version: '2.2.0' }),
+      getManifest: () => ({ version: manifestVersion }),
       async sendNativeMessage(host, message) {
         assert.equal(host, 'com.lostshin.social_post_to_obsidian');
         nativeMessages.push(message);
@@ -389,6 +502,94 @@ const settings = {
   basePath: '個人創作/社群推文',
   mediaPath: '附件/Social Post to Obsidian'
 };
+
+const draftMarkdown = background.context.generateDraftMarkdown({
+  content: 'Threads 第一則\n\n---\n\nThreads 第二則',
+  thread: ['Threads 第一則', 'Threads 第二則'],
+  platform: 'threads',
+  timestamp: '2026-07-18T11:00:00+08:00'
+});
+assert.deepEqual(parseYamlFrontmatter(draftMarkdown), {
+  title: 'Threads 草稿',
+  updated: '2026-07-18 11:00',
+  platform: 'Threads',
+  source: 'threads',
+  status: 'draft',
+  thread_count: 2,
+  tags: ['社群草稿', 'Threads', '串文']
+});
+assert.match(draftMarkdown, /> \[!warning\] 未發佈草稿/);
+assert.match(draftMarkdown, /## 串文草稿\n\n### 1 \/ 2\n\nThreads 第一則/);
+assert.match(draftMarkdown, /### 2 \/ 2\n\nThreads 第二則/);
+
+const formattedThreadMarkdown = background.context.generateMarkdown({
+  content: '串文第一則\n\n---\n\n串文第二則',
+  thread: ['串文第一則', '串文第二則'],
+  platform: 'x',
+  url: 'https://x.com/author/status/123456?source=test',
+  timestamp: '2026-07-18T11:00:00+08:00',
+  replyTo: 'https://x.com/replied/status/10',
+  quoted: {
+    author: 'quoted',
+    authorName: 'Quoted "Name"',
+    content: '引用第一行\n引用第二行',
+    url: 'https://x.com/quoted/status/20'
+  }
+});
+assert.deepEqual(parseYamlFrontmatter(formattedThreadMarkdown), {
+  title: '串文第一則',
+  created: '2026-07-18 11:00',
+  platform: 'Twitter/X',
+  source: 'x',
+  source_url: 'https://x.com/author/status/123456?source=test',
+  status: 'published',
+  thread_count: 2,
+  reply_to: 'https://x.com/replied/status/10',
+  quoted_from: '@quoted',
+  quoted_author_name: 'Quoted "Name"',
+  quoted_url: 'https://x.com/quoted/status/20',
+  tags: ['社群貼文', 'Twitter/X', '串文'],
+  summary: ''
+});
+assert.match(formattedThreadMarkdown, /> \[!info\] 貼文資訊/);
+assert.match(formattedThreadMarkdown, /## 串文內容\n\n### 1 \/ 2\n\n串文第一則/);
+assert.match(formattedThreadMarkdown, /### 2 \/ 2\n\n串文第二則/);
+assert.match(formattedThreadMarkdown, /> \[!quote\] 引用貼文/);
+
+// 用實際 Native Host 寫入隔離 Vault，再從磁碟讀回並解析 YAML。
+const markdownVaultRoot = mkdtempSync(join(tmpdir(), 'sp2o-markdown-test-'));
+try {
+  const vaultPath = join(markdownVaultRoot, 'Markdown Vault');
+  const configDirectory = join(markdownVaultRoot, 'config');
+  mkdirSync(join(vaultPath, '.obsidian'), { recursive: true });
+  assert.equal(sendNativeHostMessage({ action: 'configure', vaultPath }, configDirectory).ok, true);
+  assert.equal(sendNativeHostMessage({
+    action: 'write',
+    path: '個人創作/社群推文/_草稿_Threads.md',
+    encoding: 'utf8',
+    data: draftMarkdown
+  }, configDirectory).ok, true);
+  assert.equal(sendNativeHostMessage({
+    action: 'write',
+    path: '個人創作/社群推文/串文測試.md',
+    encoding: 'utf8',
+    data: formattedThreadMarkdown
+  }, configDirectory).ok, true);
+  const writtenDraft = readFileSync(
+    join(vaultPath, '個人創作', '社群推文', '_草稿_Threads.md'),
+    'utf8'
+  );
+  const writtenPost = readFileSync(
+    join(vaultPath, '個人創作', '社群推文', '串文測試.md'),
+    'utf8'
+  );
+  assert.equal(writtenDraft, draftMarkdown);
+  assert.equal(writtenPost, formattedThreadMarkdown);
+  assert.equal(parseYamlFrontmatter(writtenDraft).status, 'draft');
+  assert.equal(parseYamlFrontmatter(writtenPost).thread_count, 2);
+} finally {
+  rmSync(markdownVaultRoot, { recursive: true, force: true });
+}
 
 const result = await background.context.savePostBundle(postData, path, filename, settings);
 assert.deepEqual(JSON.parse(JSON.stringify(result)), { savedMedia: 1, failedMedia: 1 });
