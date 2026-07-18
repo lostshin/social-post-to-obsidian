@@ -132,7 +132,7 @@ for (const path of ['native/host.rb', 'native/install-host.sh', 'native/uninstal
 }
 execFileSync('/usr/bin/ruby', ['-c', fromRoot('native/host.rb').pathname], { stdio: 'inherit' });
 for (const path of ['native/install-host.sh', 'native/uninstall-host.sh']) {
-  execFileSync('/bin/zsh', ['-n', fromRoot(path).pathname], { stdio: 'inherit' });
+  execFileSync('zsh', ['-n', fromRoot(path).pathname], { stdio: 'inherit' });
 }
 
 console.log(`Validated Manifest V3 extension v${manifest.version}: ${javascriptFiles.length} scripts, ${referencedFiles.size} referenced assets, ${Object.keys(storeAssets).length} store assets.`);

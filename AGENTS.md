@@ -12,7 +12,7 @@
 
 ## 現況與進度（2026-07-19）
 
-- Extension `v2.4.0`；Native Host `v1.1.3`。`origin/main` 仍停在 `68e201a`；`v2.2.2`～`v2.4.0` 尚未 push／tag／Release。
+- Extension `v2.4.0`；Native Host `v1.1.3`。GitHub `main` 已到 `8018a2a`（含 `v2.2.2`～`v2.4.0`），尚未 tag／Release；本輪 CI zsh 修正仍在 local `main`。
 - 使用者已確認 `v2.2.2` 的 X 草稿三重複 bug 修復成功。
 - `v2.3.0` 已完成 500ms 草稿同步、X／Threads 串文結構、YAML frontmatter 與新版 Markdown；`v2.4.0` 已完成逐則 code block。兩版已通過自動測試與隔離 Vault 實寫，仍待真實 X／Threads 人工驗收。
 - 舊設定 `storageMode: 'direct'` 會遷移成 `native`；background／popup 的 `'direct'` 相容分支仍是活碼。
@@ -78,6 +78,7 @@ tell application "Finder" to delete targetFile
 - package script 產出 extension ZIP、macOS Helper ZIP、`SHA256SUMS`；商店只上傳 extension ZIP，且 `manifest.json` 必須位於 ZIP 根目錄。
 - Helper ZIP 檔名跟 release version；Host 真實版本只看 `HOST_VERSION`。不得宣稱未建立的 Store item、Official URL 或 verified publisher。
 - 禁止 remote JavaScript、`eval()`、`new Function()`。Workflows 目前用已存在的 `actions/checkout@v6`、`actions/setup-node@v6`；升版前查官方 release。
+- macOS Helper 腳本使用 zsh；Ubuntu runner 不保證有 `/bin/zsh`。Validator 只從 `PATH` 呼叫 `zsh`，validate／release workflow 必須先明確安裝它。
 
 ## 最短專項診斷
 

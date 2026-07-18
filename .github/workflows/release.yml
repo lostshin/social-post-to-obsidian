@@ -21,6 +21,9 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
+      - name: Install zsh for native script validation
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends zsh
+
       - name: Verify tag matches manifest
         run: |
           manifest_version="$(node -p "require('./manifest.json').version")"
