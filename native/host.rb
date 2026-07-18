@@ -6,7 +6,7 @@ require 'json'
 require 'open3'
 require 'securerandom'
 
-HOST_VERSION = '1.1.0'
+HOST_VERSION = '1.1.1'
 MAX_MESSAGE_BYTES = 64 * 1024 * 1024
 APP_DIRECTORY = ENV.fetch(
   'SP2O_CONFIG_DIR',
@@ -132,6 +132,41 @@ def choose_vault
   validate_vault(output.strip)
 end
 
+def icloud_drive_path?(path)
+  mobile_documents = File.join(Dir.home, 'Library', 'Mobile Documents')
+  expanded = File.expand_path(path)
+  expanded == mobile_documents || expanded.start_with?(mobile_documents + File::SEPARATOR)
+end
+
+def move_to_trash(path)
+  script = <<~APPLESCRIPT
+    on run argv
+      tell application "Finder"
+        delete (POSIX file (item 1 of argv))
+      end tell
+    end run
+  APPLESCRIPT
+  _output, error, status = Open3.capture3('/usr/bin/osascript', '-e', script, path)
+  return if status.success? && !File.exist?(path)
+
+  detail = error.strip
+  if detail.include?('-1743')
+    raise 'macOS 拒絕 Finder 自動化；請到「系統設定 > 隱私權與安全性 > 自動化」允許 Google Chrome 控制 Finder。'
+  end
+  raise(detail.empty? ? 'Finder could not move the Vault file to Trash' : detail)
+end
+
+def remove_file(path)
+  # Chrome-launched native hosts can be denied unlink access to iCloud Drive.
+  if icloud_drive_path?(path)
+    move_to_trash(path)
+  else
+    File.delete(path)
+  end
+rescue Errno::EPERM
+  move_to_trash(path)
+end
+
 def host_status
   path = load_config['vaultPath']
   return { 'ok' => true, 'configured' => false, 'version' => HOST_VERSION } if path.nil? || path.empty?
@@ -177,7 +212,7 @@ def handle_message(message)
   when 'remove'
     vault = configured_vault
     target = resolve_target(vault, message['path'])
-    File.delete(target) if target && File.file?(target)
+    remove_file(target) if target && File.file?(target)
     { 'ok' => true }
   when 'exists'
     vault = configured_vault

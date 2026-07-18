@@ -21,7 +21,7 @@ function loadCommon() {
     chrome: {
       runtime: {
         id: 'test',
-        getManifest: () => ({ version: '2.1.0' }),
+        getManifest: () => ({ version: '2.1.1' }),
         onMessage: { addListener() {} }
       }
     }
@@ -56,7 +56,7 @@ try {
   assert.deepEqual(sendNativeHostMessage({ action: 'ping' }, configDirectory), {
     ok: true,
     configured: false,
-    version: '1.1.0'
+    version: '1.1.1'
   });
   assert.equal(sendNativeHostMessage({ action: 'configure', vaultPath }, configDirectory).ok, true);
   assert.equal(sendNativeHostMessage({ action: 'ping' }, configDirectory).vaultName, 'Test Vault');
@@ -190,7 +190,7 @@ function loadBackground() {
   const chrome = {
     runtime: {
       lastError: null,
-      getManifest: () => ({ version: '2.1.0' }),
+      getManifest: () => ({ version: '2.1.1' }),
       async sendNativeMessage(host, message) {
         assert.equal(host, 'com.lostshin.social_post_to_obsidian');
         nativeMessages.push(message);
@@ -198,10 +198,10 @@ function loadBackground() {
           throw new Error('Specified native messaging host not found');
         }
         if (message.action === 'ping') {
-          return { ok: true, configured: true, version: '1.1.0', vaultName: 'Test Vault' };
+          return { ok: true, configured: true, version: '1.1.1', vaultName: 'Test Vault' };
         }
         if (message.action === 'chooseVault') {
-          return { ok: true, configured: true, version: '1.1.0', vaultName: 'Chosen Vault' };
+          return { ok: true, configured: true, version: '1.1.1', vaultName: 'Chosen Vault' };
         }
         if (message.action === 'exists') {
           return { ok: true, exists: nativeMode !== 'missing' };
