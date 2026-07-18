@@ -124,8 +124,50 @@
     await removeFileWithHandle(root, path);
   }
 
+  async function removeEmptyDirectoriesWithHandle(root, path) {
+    let directory = root;
+    try {
+      for (const part of pathParts(path)) {
+        directory = await directory.getDirectoryHandle(part);
+      }
+    } catch (error) {
+      if (error.name === 'NotFoundError') return 0;
+      throw error;
+    }
+
+    const emptyNames = [];
+    for await (const [name, handle] of directory.entries()) {
+      if (handle.kind !== 'directory') continue;
+      if (!/^\d{4}-\d{2}-\d{2}_\d{4}_.+/.test(name)) continue;
+      let empty = true;
+      for await (const _entry of handle.entries()) {
+        empty = false;
+        break;
+      }
+      if (empty) emptyNames.push(name);
+    }
+
+    let removed = 0;
+    for (const name of emptyNames) {
+      try {
+        await directory.removeEntry(name);
+        removed++;
+      } catch (error) {
+        if (error.name !== 'NotFoundError' && error.name !== 'InvalidModificationError') throw error;
+      }
+    }
+    return removed;
+  }
+
+  async function removeEmptyDirectories(path) {
+    const root = await requireWritableHandle();
+    return removeEmptyDirectoriesWithHandle(root, path);
+  }
+
   global.SP2OVaultAccess = {
     getPermissionStatus,
+    removeEmptyDirectories,
+    removeEmptyDirectoriesWithHandle,
     removeFile,
     removeFileWithHandle,
     requestPermission,

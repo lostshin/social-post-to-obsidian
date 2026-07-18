@@ -36,6 +36,11 @@ function updateModeUI() {
   testBtn.textContent = direct ? '檢查權限' : '測試連線';
 }
 
+async function startVaultSession() {
+  const response = await chrome.runtime.sendMessage({ type: 'START_VAULT_SESSION' });
+  if (!response?.ok) throw new Error(response?.error || '無法啟動 Vault 背景工作階段');
+}
+
 // 載入已儲存的設定
 async function loadSettings() {
   const settings = await chrome.storage.local.get(['storageMode', 'apiKey', 'port', 'basePath', 'mediaPath', 'vaultName']);
@@ -115,6 +120,7 @@ async function chooseVault() {
     updateModeUI();
     vaultName.textContent = handle.name;
     await chrome.storage.local.set({ storageMode: 'direct', vaultName: handle.name });
+    await startVaultSession();
     showStatus(`已授權 Vault：${handle.name}`, 'success');
     await checkConnection();
     chrome.runtime.sendMessage({ type: 'RETRY_QUEUE' });
@@ -134,6 +140,7 @@ async function testConnection() {
       const permission = await SP2OVaultAccess.requestPermission();
       if (permission.name) vaultName.textContent = permission.name;
       if (permission.status === 'granted') {
+        await startVaultSession();
         showStatus(`Vault 權限正常 · ${permission.name}`, 'success');
         chrome.runtime.sendMessage({ type: 'RETRY_QUEUE' });
       } else {
@@ -212,8 +219,9 @@ async function checkConnection() {
       const permission = await SP2OVaultAccess.getPermissionStatus();
       if (permission.name) vaultName.textContent = permission.name;
       if (permission.status === 'granted') {
+        await startVaultSession();
         connDot.className = 'dot ok';
-        connText.textContent = `Vault 可直接寫入 · ${permission.name}`;
+        connText.textContent = `Vault 背景連線中 · ${permission.name}`;
       } else {
         connDot.className = 'dot fail';
         connText.textContent = permission.status === 'missing' ? '尚未選擇 Vault' : 'Vault 需要重新授權';

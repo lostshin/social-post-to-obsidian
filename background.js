@@ -25,6 +25,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'RETRY_QUEUE':
       enqueue('offline-retry', retryOfflineQueue);
       break;
+    case 'START_VAULT_SESSION':
+      startVaultSession().then(
+        () => sendResponse({ ok: true }),
+        (error) => sendResponse({ ok: false, error: error.message })
+      );
+      return true;
   }
 
   // 同步回應，避免 content script 因 port closed 錯誤而重送訊息
@@ -36,6 +42,9 @@ const taskChains = {};
 // 記錄每平台最後發佈的貼文時間，用來丟棄遲到的舊草稿
 const lastPublishTimestamp = {};
 const STORAGE_SETTING_KEYS = ['storageMode', 'apiKey', 'port', 'basePath', 'mediaPath'];
+const VAULT_SESSION_DOCUMENT = 'offscreen/vault-session.html';
+const MAINTENANCE_ALARM = 'sp2o-vault-maintenance';
+let creatingVaultSession = null;
 
 function resolveStorageMode(settings) {
   return settings.storageMode || (settings.apiKey ? 'rest' : 'direct');
@@ -45,9 +54,41 @@ async function getStorageSettings() {
   return chrome.storage.local.get(STORAGE_SETTING_KEYS);
 }
 
+async function ensureVaultSession() {
+  if (creatingVaultSession) return creatingVaultSession;
+  creatingVaultSession = (async () => {
+    let exists;
+    if ('getContexts' in chrome.runtime) {
+      const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+      exists = contexts.length > 0;
+    } else {
+      const matchedClients = await clients.matchAll();
+      exists = matchedClients.some((client) => client.url.includes(VAULT_SESSION_DOCUMENT));
+    }
+    if (exists) return;
+    await chrome.offscreen.createDocument({
+      url: VAULT_SESSION_DOCUMENT,
+      reasons: ['WORKERS'],
+      justification: 'Keep the user-authorized Vault file session available for background saves.'
+    });
+  })();
+  try {
+    await creatingVaultSession;
+  } finally {
+    creatingVaultSession = null;
+  }
+}
+
 function enqueue(platform, task) {
   const key = platform || 'default';
   taskChains[key] = (taskChains[key] || Promise.resolve()).then(task).catch(() => {});
+}
+
+async function startVaultSession() {
+  await ensureVaultSession();
+  chrome.alarms.create(MAINTENANCE_ALARM, { periodInMinutes: 15 });
+  const settings = await getStorageSettings();
+  await cleanupEmptyMediaFolders(settings);
 }
 
 // 處理草稿存檔
@@ -206,6 +247,7 @@ async function savePostBundle(data, fullPath, filename, settings) {
 
   const markdown = generateMarkdown(data, mediaResults);
   await saveVaultFile(markdown, fullPath, settings, 'text/markdown');
+  await cleanupEmptyMediaFolders(settings);
 
   return {
     savedMedia: mediaResults.filter(item => !item.failed).length,
@@ -215,6 +257,23 @@ async function savePostBundle(data, fullPath, filename, settings) {
 
 function normalizeVaultPath(path) {
   return String(path || '').split('/').filter(Boolean).join('/');
+}
+
+async function cleanupEmptyMediaFolders(settings) {
+  if (resolveStorageMode(settings) !== 'direct') return 0;
+  try {
+    await ensureVaultSession();
+    const removed = await SP2OVaultAccess.removeEmptyDirectories(
+      normalizeVaultPath(settings.mediaPath || DEFAULT_MEDIA_PATH)
+    );
+    if (removed > 0) {
+      console.log('[Social Post to Obsidian] Removed empty media folders:', removed);
+    }
+    return removed;
+  } catch (error) {
+    console.log('[Social Post to Obsidian] Media folder cleanup skipped:', error.message);
+    return 0;
+  }
 }
 
 function relativeVaultPath(fromDirectory, targetPath) {
@@ -280,6 +339,7 @@ async function deleteDraft(filepath, apiKey, port) {
 async function deleteVaultFile(filepath, settings) {
   if (resolveStorageMode(settings) === 'direct') {
     try {
+      await ensureVaultSession();
       await SP2OVaultAccess.removeFile(filepath);
       console.log('[Social Post to Obsidian] Draft deleted:', filepath);
     } catch (error) {
@@ -334,6 +394,15 @@ async function enqueueOffline(item) {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === RETRY_ALARM) {
     enqueue('offline-retry', retryOfflineQueue);
+  } else if (alarm.name === MAINTENANCE_ALARM) {
+    enqueue('vault-maintenance', async () => {
+      const settings = await getStorageSettings();
+      if (resolveStorageMode(settings) === 'direct') {
+        await cleanupEmptyMediaFolders(settings);
+      } else {
+        chrome.alarms.clear(MAINTENANCE_ALARM);
+      }
+    });
   }
 });
 
@@ -388,6 +457,14 @@ chrome.storage.local.get(QUEUE_KEY).then((stored) => {
   if ((stored[QUEUE_KEY] || []).length > 0) {
     chrome.alarms.create(RETRY_ALARM, { periodInMinutes: 1 });
   }
+});
+
+getStorageSettings().then(async (settings) => {
+  if (settings.storageMode !== 'direct') return;
+  const permission = await SP2OVaultAccess.getPermissionStatus();
+  if (permission.name) await startVaultSession();
+}).catch((error) => {
+  console.log('[Social Post to Obsidian] Vault session not restored:', error.message);
 });
 
 // 記錄最近儲存（popup 顯示用，保留 5 筆）
@@ -574,6 +651,7 @@ function apiBase(port) {
 async function saveVaultFile(content, filename, settings, contentType) {
   if (resolveStorageMode(settings) === 'direct') {
     try {
+      await ensureVaultSession();
       await SP2OVaultAccess.writeFile(filename, content);
       return;
     } catch (error) {

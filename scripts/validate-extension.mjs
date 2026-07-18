@@ -41,6 +41,10 @@ if (manifest.manifest_version !== 3) {
   fail('manifest_version must be 3');
 }
 
+if (!(manifest.permissions || []).includes('offscreen')) {
+  fail('offscreen permission is required for the Direct Vault session');
+}
+
 if (!/^\d+\.\d+\.\d+$/.test(manifest.version)) {
   fail(`unexpected version format: ${manifest.version}`);
 }
@@ -49,6 +53,9 @@ const referencedFiles = new Set([
   manifest.background?.service_worker,
   manifest.action?.default_popup,
   'vault-access.js',
+  'offscreen/vault-session.html',
+  'offscreen/vault-session.js',
+  'offscreen/vault-session-worker.js',
   ...Object.values(manifest.icons || {}),
   ...Object.values(manifest.action?.default_icon || {}),
   ...(manifest.content_scripts || []).flatMap((script) => script.js || [])
@@ -103,6 +110,8 @@ for (const permission of manifest.host_permissions || []) {
 const javascriptFiles = [
   'background.js',
   'vault-access.js',
+  'offscreen/vault-session.js',
+  'offscreen/vault-session-worker.js',
   ...readdirSync(fromRoot('content')).filter((file) => file.endsWith('.js')).map((file) => join('content', file)),
   ...readdirSync(fromRoot('popup')).filter((file) => file.endsWith('.js')).map((file) => join('popup', file))
 ];

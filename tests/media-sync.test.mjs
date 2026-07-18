@@ -18,7 +18,7 @@ function loadCommon() {
     chrome: {
       runtime: {
         id: 'test',
-        getManifest: () => ({ version: '1.8.0' }),
+        getManifest: () => ({ version: '1.9.0' }),
         onMessage: { addListener() {} }
       }
     }
@@ -38,6 +38,7 @@ function loadVaultAccess() {
 class FakeDirectoryHandle {
   constructor(name) {
     this.name = name;
+    this.kind = 'directory';
     this.directories = new Map();
     this.files = new Map();
   }
@@ -53,7 +54,8 @@ class FakeDirectoryHandle {
   async getFileHandle(name, options = {}) {
     if (!this.files.has(name) && !options.create) throw new DOMException('Not found', 'NotFoundError');
     const directory = this;
-    return {
+    const handle = {
+      kind: 'file',
       async createWritable() {
         return {
           async write(content) { directory.files.set(name, content); },
@@ -61,10 +63,23 @@ class FakeDirectoryHandle {
         };
       }
     };
+    if (options.create && !this.files.has(name)) this.files.set(name, null);
+    return handle;
   }
 
   async removeEntry(name) {
-    if (!this.files.delete(name)) throw new DOMException('Not found', 'NotFoundError');
+    if (this.files.delete(name)) return;
+    const directory = this.directories.get(name);
+    if (!directory) throw new DOMException('Not found', 'NotFoundError');
+    if (directory.files.size > 0 || directory.directories.size > 0) {
+      throw new DOMException('Directory not empty', 'InvalidModificationError');
+    }
+    this.directories.delete(name);
+  }
+
+  async *entries() {
+    for (const entry of this.directories) yield entry;
+    for (const name of this.files.keys()) yield [name, { kind: 'file', name }];
   }
 }
 
@@ -82,6 +97,20 @@ await assert.rejects(
   vaultAccess.writeFileWithHandle(fakeVault, '../outside.md', 'blocked'),
   /Vault 路徑無效/
 );
+
+const mediaRoot = await fakeVault.getDirectoryHandle('附件', { create: true });
+const extensionMedia = await mediaRoot.getDirectoryHandle('Social Post to Obsidian', { create: true });
+await extensionMedia.getDirectoryHandle('2026-07-01_0900_old-empty', { create: true });
+await extensionMedia.getDirectoryHandle('unrelated-empty', { create: true });
+const retainedFolder = await extensionMedia.getDirectoryHandle('2026-07-18_1100_has-image', { create: true });
+await retainedFolder.getFileHandle('image-01.jpg', { create: true });
+assert.equal(
+  await vaultAccess.removeEmptyDirectoriesWithHandle(fakeVault, '附件/Social Post to Obsidian'),
+  1
+);
+assert.equal(extensionMedia.directories.has('2026-07-01_0900_old-empty'), false);
+assert.equal(extensionMedia.directories.has('unrelated-empty'), true);
+assert.equal(extensionMedia.directories.has('2026-07-18_1100_has-image'), true);
 
 const xResponse = JSON.stringify({
   data: {
@@ -153,8 +182,12 @@ function loadBackground() {
   const requests = [];
   const directWrites = [];
   const directDeletes = [];
+  const directCleanups = [];
   let localMode = 'ok';
   let directMode = 'ok';
+  const offscreenContexts = [];
+  const offscreenCreates = [];
+  const alarmCreates = [];
 
   const directAccess = {
     async getPermissionStatus() {
@@ -169,13 +202,19 @@ function loadBackground() {
     async removeFile(path) {
       if (directMode !== 'ok') throw new Error('Vault 需要重新授權');
       directDeletes.push(path);
+    },
+    async removeEmptyDirectories(path) {
+      if (directMode !== 'ok') throw new Error('Vault 需要重新授權');
+      directCleanups.push(path);
+      return 1;
     }
   };
 
   const chrome = {
     runtime: {
       lastError: null,
-      getManifest: () => ({ version: '1.8.0' }),
+      getManifest: () => ({ version: '1.9.0' }),
+      async getContexts() { return offscreenContexts; },
       onMessage: { addListener() {} }
     },
     storage: {
@@ -190,9 +229,15 @@ function loadBackground() {
       }
     },
     alarms: {
-      create() {},
+      create(name, options) { alarmCreates.push({ name, options }); },
       clear() {},
       onAlarm: { addListener() {} }
+    },
+    offscreen: {
+      async createDocument(options) {
+        offscreenCreates.push(options);
+        offscreenContexts.push({ contextType: 'OFFSCREEN_DOCUMENT' });
+      }
     },
     tabs: { sendMessage(_tabId, _message, callback) { callback?.(); } },
     notifications: { create() {} }
@@ -231,9 +276,12 @@ function loadBackground() {
   });
   vm.runInContext(readFileSync('background.js', 'utf8'), context);
   return {
+    alarmCreates,
     context,
+    directCleanups,
     directDeletes,
     directWrites,
+    offscreenCreates,
     requests,
     stored,
     setDirectMode(mode) { directMode = mode; },
@@ -242,6 +290,16 @@ function loadBackground() {
 }
 
 const background = loadBackground();
+await Promise.all([
+  background.context.ensureVaultSession(),
+  background.context.ensureVaultSession()
+]);
+assert.equal(background.offscreenCreates.length, 1);
+assert.equal(background.offscreenCreates[0].reasons[0], 'WORKERS');
+await background.context.startVaultSession();
+assert.equal(background.offscreenCreates.length, 1);
+assert.equal(background.alarmCreates.at(-1).name, 'sp2o-vault-maintenance');
+assert.deepEqual(background.directCleanups, ['附件/Social Post to Obsidian']);
 const postData = {
   content: '圖片同步測試',
   platform: 'x',
@@ -306,6 +364,7 @@ assert.match(
 );
 assert.equal(directBackground.directWrites[1].path, path);
 assert.match(directBackground.directWrites[1].content, /!\[直接寫入圖片\]/);
+assert.deepEqual(directBackground.directCleanups, ['附件/Social Post to Obsidian']);
 
 directBackground.stored.storageMode = 'direct';
 directBackground.stored.basePath = '個人創作/社群推文';
