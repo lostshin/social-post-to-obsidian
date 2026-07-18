@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
+// Keep local-time filename assertions deterministic across developer machines and CI.
+process.env.TZ = 'Asia/Taipei';
+
 function loadCommon() {
   const context = vm.createContext({
     console,
