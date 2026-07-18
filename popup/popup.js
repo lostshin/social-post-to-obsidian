@@ -2,16 +2,22 @@
 const apiKeyInput = document.getElementById('apiKey');
 const portInput = document.getElementById('port');
 const basePathInput = document.getElementById('basePath');
+const settingsPanel = document.getElementById('settingsPanel');
+const settingsForm = document.getElementById('settingsForm');
+const toggleApiKey = document.getElementById('toggleApiKey');
 const testBtn = document.getElementById('testBtn');
-const saveBtn = document.getElementById('saveBtn');
 const statusDiv = document.getElementById('status');
 const connDot = document.getElementById('connDot');
 const connText = document.getElementById('connText');
 const queueInfo = document.getElementById('queueInfo');
 const draftSection = document.getElementById('draftSection');
 const draftList = document.getElementById('draftList');
-const recentSection = document.getElementById('recentSection');
 const recentList = document.getElementById('recentList');
+
+function readPort() {
+  const enteredPort = Number.parseInt(portInput.value, 10);
+  return Number.isInteger(enteredPort) ? enteredPort : 27123;
+}
 
 // 載入已儲存的設定
 async function loadSettings() {
@@ -26,12 +32,14 @@ async function loadSettings() {
   if (settings.basePath) {
     basePathInput.value = settings.basePath;
   }
+
+  settingsPanel.open = !settings.apiKey;
 }
 
 // 儲存設定
 async function saveSettings() {
   const apiKey = apiKeyInput.value.trim();
-  const port = parseInt(portInput.value) || 27123;
+  const port = readPort();
   const basePath = basePathInput.value.trim() || '個人創作/社群推文';
 
   if (!apiKey) {
@@ -39,14 +47,27 @@ async function saveSettings() {
     return;
   }
 
+  if (port < 1 || port > 65535) {
+    showStatus('Port 必須介於 1 到 65535', 'error');
+    portInput.focus();
+    return;
+  }
+
   await chrome.storage.local.set({ apiKey, port, basePath });
   showStatus('設定已儲存', 'success');
+  checkConnection();
 }
 
 // 測試連線
 async function testConnection() {
   const apiKey = apiKeyInput.value.trim();
-  const port = parseInt(portInput.value) || 27123;
+  const port = readPort();
+
+  if (port < 1 || port > 65535) {
+    showStatus('Port 必須介於 1 到 65535', 'error');
+    portInput.focus();
+    return;
+  }
 
   if (!apiKey) {
     showStatus('請先輸入 API Key', 'error');
@@ -54,8 +75,8 @@ async function testConnection() {
   }
 
   testBtn.disabled = true;
-  testBtn.textContent = '測試中...';
-  showStatus('正在連線...', 'info');
+  testBtn.textContent = '測試中…';
+  showStatus('正在連線…', 'info');
 
   try {
     // 27124 是 Local REST API 的 HTTPS 埠
@@ -69,17 +90,17 @@ async function testConnection() {
 
     if (response.ok) {
       const data = await response.json();
-      showStatus(`連線成功！Vault: ${data.service || 'Obsidian'}`, 'success');
+      showStatus(`連線成功 · ${data.service || 'Obsidian'}`, 'success');
     } else if (response.status === 401) {
       showStatus('API Key 無效', 'error');
     } else {
-      showStatus(`連線失敗: HTTP ${response.status}`, 'error');
+      showStatus(`連線失敗 · HTTP ${response.status}`, 'error');
     }
   } catch (error) {
     if (error.message.includes('Failed to fetch')) {
       showStatus('無法連線，請確認 Obsidian 已開啟且 Local REST API 插件已啟用', 'error');
     } else {
-      showStatus(`錯誤: ${error.message}`, 'error');
+      showStatus(`連線錯誤 · ${error.message}`, 'error');
     }
   } finally {
     testBtn.disabled = false;
@@ -160,6 +181,13 @@ function buildListItem(filename, path, metaText) {
   return li;
 }
 
+function buildEmptyState(message) {
+  const li = document.createElement('li');
+  li.className = 'empty-state';
+  li.textContent = message;
+  return li;
+}
+
 // 顯示未發佈草稿（打字中自動暫存的內容）
 async function renderDrafts() {
   const stored = await chrome.storage.local.get(['draftStatus_x', 'draftStatus_threads']);
@@ -179,15 +207,26 @@ async function renderDrafts() {
 // 顯示最近儲存清單（已發佈的貼文），點擊可在 Obsidian 開啟
 async function renderRecent() {
   const { recentSaves = [] } = await chrome.storage.local.get('recentSaves');
-  if (recentSaves.length === 0) return;
-
-  recentSection.hidden = false;
   recentList.textContent = '';
+
+  if (recentSaves.length === 0) {
+    recentList.appendChild(buildEmptyState('發佈貼文後，最近的存檔會顯示在這裡'));
+    return;
+  }
 
   for (const item of recentSaves) {
     const platformName = item.platform === 'x' ? 'Twitter/X' : 'Threads';
     recentList.appendChild(buildListItem(item.filename, item.path, `${platformName} · ${formatTime(item.savedAt)}`));
   }
+}
+
+function toggleApiKeyVisibility() {
+  const isVisible = apiKeyInput.type === 'text';
+  apiKeyInput.type = isVisible ? 'password' : 'text';
+  toggleApiKey.textContent = isVisible ? '顯示' : '隱藏';
+  toggleApiKey.setAttribute('aria-label', isVisible ? '顯示 API Key' : '隱藏 API Key');
+  toggleApiKey.setAttribute('aria-pressed', String(!isVisible));
+  apiKeyInput.focus();
 }
 
 // popup 開著的時候，儲存狀態變動即時反映
@@ -199,8 +238,12 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 // 事件綁定
-saveBtn.addEventListener('click', saveSettings);
+settingsForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  saveSettings();
+});
 testBtn.addEventListener('click', testConnection);
+toggleApiKey.addEventListener('click', toggleApiKeyVisibility);
 
 // 初始化
 document.getElementById('version').textContent = 'v' + chrome.runtime.getManifest().version;

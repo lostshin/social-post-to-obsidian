@@ -7,49 +7,95 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="container">
-    <h1>Social Post to Obsidian <span id="version" class="version"></span></h1>
+  <div class="app-shell">
+    <header class="app-header">
+      <img class="brand-mark" src="../icons/logo.svg" alt="">
+      <div class="brand-copy">
+        <h1>Social Post</h1>
+        <p>to Obsidian <span id="version" class="version"></span></p>
+      </div>
+      <span class="platform-badge">X · Threads</span>
+    </header>
 
-    <div class="conn-row">
-      <span id="connDot" class="dot"></span>
-      <span id="connText">檢查連線中…</span>
-    </div>
-    <div id="queueInfo" class="queue-info" hidden></div>
+    <main>
+      <section class="connection-card" aria-labelledby="connectionLabel">
+        <span class="connection-indicator" aria-hidden="true">
+          <span id="connDot" class="dot"></span>
+        </span>
+        <div>
+          <p id="connectionLabel" class="eyebrow">連線狀態</p>
+          <p id="connText" class="connection-text">檢查連線中…</p>
+        </div>
+      </section>
 
-    <div class="form-group">
-      <label for="apiKey">Obsidian API Key</label>
-      <input type="password" id="apiKey" placeholder="輸入 Local REST API Key">
-      <small>在 Obsidian 設定 → Local REST API 中取得</small>
-    </div>
+      <div id="queueInfo" class="queue-info" role="status" hidden></div>
 
-    <div class="form-group">
-      <label for="port">API Port</label>
-      <input type="number" id="port" value="27123" min="1" max="65535">
-      <small>預設 27123 (HTTP) 或 27124 (HTTPS)</small>
-    </div>
+      <details id="settingsPanel" class="settings-section" open>
+        <summary class="section-heading">
+          <div>
+            <p class="eyebrow">Vault setup</p>
+            <h2 id="settingsTitle">儲存設定</h2>
+          </div>
+          <span class="settings-toggle" aria-hidden="true"></span>
+        </summary>
 
-    <div class="form-group">
-      <label for="basePath">存檔路徑</label>
-      <input type="text" id="basePath" value="個人創作/社群推文" placeholder="資料夾路徑">
-      <small>相對於 Vault 根目錄的路徑</small>
-    </div>
+        <form id="settingsForm">
+          <div class="form-group">
+            <div class="label-row">
+              <label for="apiKey">API Key</label>
+              <span>Local REST API</span>
+            </div>
+            <div class="input-with-action">
+              <input type="password" id="apiKey" placeholder="貼上 API Key" autocomplete="off" spellcheck="false">
+              <button type="button" id="toggleApiKey" class="input-action" aria-label="顯示 API Key" aria-pressed="false">顯示</button>
+            </div>
+            <small>Obsidian → 設定 → Local REST API</small>
+          </div>
 
-    <div class="button-group">
-      <button id="testBtn" class="secondary">測試連線</button>
-      <button id="saveBtn" class="primary">儲存設定</button>
-    </div>
+          <div class="form-grid">
+            <div class="form-group form-group-port">
+              <label for="port">Port</label>
+              <input type="number" id="port" value="27123" min="1" max="65535" inputmode="numeric">
+              <small>27123 / 27124</small>
+            </div>
 
-    <div id="status" class="status"></div>
+            <div class="form-group">
+              <label for="basePath">Vault 內存檔路徑</label>
+              <input type="text" id="basePath" value="個人創作/社群推文" placeholder="資料夾路徑" spellcheck="false">
+              <small>相對於 Vault 根目錄</small>
+            </div>
+          </div>
 
-    <div id="draftSection" class="recent" hidden>
-      <h2>未發佈草稿</h2>
-      <ul id="draftList"></ul>
-    </div>
+          <div class="button-group">
+            <button type="button" id="testBtn" class="secondary">測試連線</button>
+            <button type="submit" id="saveBtn" class="primary">儲存設定</button>
+          </div>
 
-    <div id="recentSection" class="recent" hidden>
-      <h2>最近儲存</h2>
-      <ul id="recentList"></ul>
-    </div>
+          <div id="status" class="status" role="status" aria-live="polite"></div>
+        </form>
+      </details>
+
+      <section id="draftSection" class="activity-section" aria-labelledby="draftTitle" hidden>
+        <div class="activity-heading">
+          <h2 id="draftTitle">未發佈草稿</h2>
+          <span class="live-label">自動暫存</span>
+        </div>
+        <ul id="draftList" class="activity-list"></ul>
+      </section>
+
+      <section id="recentSection" class="activity-section" aria-labelledby="recentTitle">
+        <div class="activity-heading">
+          <h2 id="recentTitle">最近儲存</h2>
+          <span>最多 5 筆</span>
+        </div>
+        <ul id="recentList" class="activity-list"></ul>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <span aria-hidden="true"></span>
+      發佈後自動備份至你的 Vault
+    </footer>
   </div>
 
   <script src="popup.js"></script>

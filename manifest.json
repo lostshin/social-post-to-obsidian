@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Social Post to Obsidian",
-  "version": "1.4.0",
-  "description": "自動將社群貼文存檔至 Obsidian",
+  "version": "1.5.0",
+  "description": "發佈 X 與 Threads 貼文後，自動備份至你的 Obsidian Vault",
   "permissions": [
     "storage",
     "notifications",
@@ -48,12 +48,14 @@
     "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     }
   },
   "icons": {
     "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   }
