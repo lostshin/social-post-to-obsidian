@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import vm from 'node:vm';
 
 // Keep local-time filename assertions deterministic across developer machines and CI.
@@ -18,7 +21,7 @@ function loadCommon() {
     chrome: {
       runtime: {
         id: 'test',
-        getManifest: () => ({ version: '1.9.0' }),
+        getManifest: () => ({ version: '2.0.0' }),
         onMessage: { addListener() {} }
       }
     }
@@ -29,88 +32,79 @@ function loadCommon() {
 
 const common = loadCommon();
 
-function loadVaultAccess() {
-  const context = vm.createContext({ console });
-  vm.runInContext(readFileSync('vault-access.js', 'utf8'), context);
-  return context.SP2OVaultAccess;
+function sendNativeHostMessage(message, configDirectory) {
+  const payload = Buffer.from(JSON.stringify(message));
+  const header = Buffer.alloc(4);
+  header.writeUInt32LE(payload.length);
+  const result = spawnSync('/usr/bin/ruby', ['native/host.rb'], {
+    input: Buffer.concat([header, payload]),
+    env: { ...process.env, SP2O_CONFIG_DIR: configDirectory }
+  });
+  assert.equal(result.status, 0, result.stderr.toString());
+  assert.ok(result.stdout.length >= 4, 'Native host did not return a framed response');
+  const responseLength = result.stdout.readUInt32LE(0);
+  return JSON.parse(result.stdout.subarray(4, 4 + responseLength).toString());
 }
 
-class FakeDirectoryHandle {
-  constructor(name) {
-    this.name = name;
-    this.kind = 'directory';
-    this.directories = new Map();
-    this.files = new Map();
-  }
+const nativeTestRoot = mkdtempSync(join(tmpdir(), 'sp2o-native-test-'));
+try {
+  const vaultPath = join(nativeTestRoot, 'Test Vault');
+  const configDirectory = join(nativeTestRoot, 'config');
+  const mediaRoot = join(vaultPath, '附件', 'Social Post to Obsidian');
+  mkdirSync(join(vaultPath, '.obsidian'), { recursive: true });
 
-  async getDirectoryHandle(name, options = {}) {
-    if (!this.directories.has(name)) {
-      if (!options.create) throw new DOMException('Not found', 'NotFoundError');
-      this.directories.set(name, new FakeDirectoryHandle(name));
-    }
-    return this.directories.get(name);
-  }
+  assert.deepEqual(sendNativeHostMessage({ action: 'ping' }, configDirectory), {
+    ok: true,
+    configured: false,
+    version: '1.0.0'
+  });
+  assert.equal(sendNativeHostMessage({ action: 'configure', vaultPath }, configDirectory).ok, true);
+  assert.equal(sendNativeHostMessage({ action: 'ping' }, configDirectory).vaultName, 'Test Vault');
 
-  async getFileHandle(name, options = {}) {
-    if (!this.files.has(name) && !options.create) throw new DOMException('Not found', 'NotFoundError');
-    const directory = this;
-    const handle = {
-      kind: 'file',
-      async createWritable() {
-        return {
-          async write(content) { directory.files.set(name, content); },
-          async close() {}
-        };
-      }
-    };
-    if (options.create && !this.files.has(name)) this.files.set(name, null);
-    return handle;
-  }
+  assert.equal(sendNativeHostMessage({
+    action: 'write',
+    path: '個人創作/社群推文/test.md',
+    encoding: 'utf8',
+    data: '# native'
+  }, configDirectory).ok, true);
+  assert.equal(readFileSync(join(vaultPath, '個人創作', '社群推文', 'test.md'), 'utf8'), '# native');
 
-  async removeEntry(name) {
-    if (this.files.delete(name)) return;
-    const directory = this.directories.get(name);
-    if (!directory) throw new DOMException('Not found', 'NotFoundError');
-    if (directory.files.size > 0 || directory.directories.size > 0) {
-      throw new DOMException('Directory not empty', 'InvalidModificationError');
-    }
-    this.directories.delete(name);
-  }
+  assert.equal(sendNativeHostMessage({
+    action: 'write',
+    path: '附件/Social Post to Obsidian/2026-07-18_1100_has-image/image-01.jpg',
+    encoding: 'base64',
+    data: Buffer.from([0xff, 0xd8, 0xff]).toString('base64')
+  }, configDirectory).ok, true);
+  assert.deepEqual(
+    readFileSync(join(mediaRoot, '2026-07-18_1100_has-image', 'image-01.jpg')),
+    Buffer.from([0xff, 0xd8, 0xff])
+  );
 
-  async *entries() {
-    for (const entry of this.directories) yield entry;
-    for (const name of this.files.keys()) yield [name, { kind: 'file', name }];
-  }
+  mkdirSync(join(mediaRoot, '2026-07-01_0900_old-empty'), { recursive: true });
+  mkdirSync(join(mediaRoot, 'unrelated-empty'), { recursive: true });
+  const cleanup = sendNativeHostMessage({
+    action: 'cleanEmptyMediaFolders',
+    path: '附件/Social Post to Obsidian'
+  }, configDirectory);
+  assert.equal(cleanup.removed, 1);
+  assert.equal(existsSync(join(mediaRoot, '2026-07-01_0900_old-empty')), false);
+  assert.equal(existsSync(join(mediaRoot, 'unrelated-empty')), true);
+  assert.equal(existsSync(join(mediaRoot, '2026-07-18_1100_has-image')), true);
+
+  assert.equal(sendNativeHostMessage({
+    action: 'write',
+    path: '../outside.md',
+    encoding: 'utf8',
+    data: 'blocked'
+  }, configDirectory).ok, false);
+  assert.equal(sendNativeHostMessage({
+    action: 'remove',
+    path: '個人創作/社群推文/test.md'
+  }, configDirectory).ok, true);
+  assert.equal(existsSync(join(vaultPath, '個人創作', '社群推文', 'test.md')), false);
+} finally {
+  rmSync(nativeTestRoot, { recursive: true, force: true });
 }
-
-const vaultAccess = loadVaultAccess();
-const fakeVault = new FakeDirectoryHandle('Test Vault');
-await vaultAccess.writeFileWithHandle(fakeVault, '個人創作/社群推文/test.md', '# direct');
-assert.equal(
-  fakeVault.directories.get('個人創作').directories.get('社群推文').files.get('test.md'),
-  '# direct'
-);
-await vaultAccess.removeFileWithHandle(fakeVault, '個人創作/社群推文/test.md');
-assert.equal(fakeVault.directories.get('個人創作').directories.get('社群推文').files.has('test.md'), false);
-await vaultAccess.removeFileWithHandle(fakeVault, '個人創作/社群推文/missing.md');
-await assert.rejects(
-  vaultAccess.writeFileWithHandle(fakeVault, '../outside.md', 'blocked'),
-  /Vault 路徑無效/
-);
-
-const mediaRoot = await fakeVault.getDirectoryHandle('附件', { create: true });
-const extensionMedia = await mediaRoot.getDirectoryHandle('Social Post to Obsidian', { create: true });
-await extensionMedia.getDirectoryHandle('2026-07-01_0900_old-empty', { create: true });
-await extensionMedia.getDirectoryHandle('unrelated-empty', { create: true });
-const retainedFolder = await extensionMedia.getDirectoryHandle('2026-07-18_1100_has-image', { create: true });
-await retainedFolder.getFileHandle('image-01.jpg', { create: true });
-assert.equal(
-  await vaultAccess.removeEmptyDirectoriesWithHandle(fakeVault, '附件/Social Post to Obsidian'),
-  1
-);
-assert.equal(extensionMedia.directories.has('2026-07-01_0900_old-empty'), false);
-assert.equal(extensionMedia.directories.has('unrelated-empty'), true);
-assert.equal(extensionMedia.directories.has('2026-07-18_1100_has-image'), true);
 
 const xResponse = JSON.stringify({
   data: {
@@ -180,41 +174,28 @@ assert.deepEqual(JSON.parse(JSON.stringify(parsedThreads.media)), [
 function loadBackground() {
   const stored = {};
   const requests = [];
-  const directWrites = [];
-  const directDeletes = [];
-  const directCleanups = [];
+  const nativeMessages = [];
   let localMode = 'ok';
-  let directMode = 'ok';
-  const offscreenContexts = [];
-  const offscreenCreates = [];
+  let nativeMode = 'ok';
   const alarmCreates = [];
-
-  const directAccess = {
-    async getPermissionStatus() {
-      return directMode === 'ok'
-        ? { status: 'granted', name: 'Test Vault' }
-        : { status: 'prompt', name: 'Test Vault' };
-    },
-    async writeFile(path, content) {
-      if (directMode !== 'ok') throw new Error('Vault 需要重新授權');
-      directWrites.push({ path, content });
-    },
-    async removeFile(path) {
-      if (directMode !== 'ok') throw new Error('Vault 需要重新授權');
-      directDeletes.push(path);
-    },
-    async removeEmptyDirectories(path) {
-      if (directMode !== 'ok') throw new Error('Vault 需要重新授權');
-      directCleanups.push(path);
-      return 1;
-    }
-  };
 
   const chrome = {
     runtime: {
       lastError: null,
-      getManifest: () => ({ version: '1.9.0' }),
-      async getContexts() { return offscreenContexts; },
+      getManifest: () => ({ version: '2.0.0' }),
+      async sendNativeMessage(host, message) {
+        assert.equal(host, 'com.lostshin.social_post_to_obsidian');
+        nativeMessages.push(message);
+        if (nativeMode !== 'ok') throw new Error('Specified native messaging host not found');
+        if (message.action === 'ping') {
+          return { ok: true, configured: true, version: '1.0.0', vaultName: 'Test Vault' };
+        }
+        if (message.action === 'chooseVault') {
+          return { ok: true, configured: true, version: '1.0.0', vaultName: 'Chosen Vault' };
+        }
+        if (message.action === 'cleanEmptyMediaFolders') return { ok: true, removed: 1 };
+        return { ok: true };
+      },
       onMessage: { addListener() {} }
     },
     storage: {
@@ -232,12 +213,6 @@ function loadBackground() {
       create(name, options) { alarmCreates.push({ name, options }); },
       clear() {},
       onAlarm: { addListener() {} }
-    },
-    offscreen: {
-      async createDocument(options) {
-        offscreenCreates.push(options);
-        offscreenContexts.push({ contextType: 'OFFSCREEN_DOCUMENT' });
-      }
     },
     tabs: { sendMessage(_tabId, _message, callback) { callback?.(); } },
     notifications: { create() {} }
@@ -268,9 +243,9 @@ function loadBackground() {
     Response,
     URL,
     ArrayBuffer,
+    Uint8Array,
     Date,
-    SP2OVaultAccess: directAccess,
-    importScripts() {},
+    btoa,
     setTimeout,
     clearTimeout
   });
@@ -278,28 +253,23 @@ function loadBackground() {
   return {
     alarmCreates,
     context,
-    directCleanups,
-    directDeletes,
-    directWrites,
-    offscreenCreates,
+    nativeMessages,
     requests,
     stored,
-    setDirectMode(mode) { directMode = mode; },
+    setNativeMode(mode) { nativeMode = mode; },
     setLocalMode(mode) { localMode = mode; }
   };
 }
 
 const background = loadBackground();
-await Promise.all([
-  background.context.ensureVaultSession(),
-  background.context.ensureVaultSession()
-]);
-assert.equal(background.offscreenCreates.length, 1);
-assert.equal(background.offscreenCreates[0].reasons[0], 'WORKERS');
-await background.context.startVaultSession();
-assert.equal(background.offscreenCreates.length, 1);
+background.stored.storageMode = 'native';
+background.stored.mediaPath = '附件/Social Post to Obsidian';
+await background.context.startNativeMaintenance();
 assert.equal(background.alarmCreates.at(-1).name, 'sp2o-vault-maintenance');
-assert.deepEqual(background.directCleanups, ['附件/Social Post to Obsidian']);
+assert.deepEqual(JSON.parse(JSON.stringify(background.nativeMessages.at(-1))), {
+  action: 'cleanEmptyMediaFolders',
+  path: '附件/Social Post to Obsidian'
+});
 const postData = {
   content: '圖片同步測試',
   platform: 'x',
@@ -340,63 +310,74 @@ const imageOnlyFilename = background.context.generateFilename({
   timestamp: '2026-07-18T11:00:00+08:00'
 });
 assert.equal(imageOnlyFilename, '2026-07-18_1100_圖片貼文.md');
-assert.equal(background.context.resolveStorageMode({}), 'direct');
+assert.equal(background.context.resolveStorageMode({}), 'native');
 assert.equal(background.context.resolveStorageMode({ apiKey: 'legacy-key' }), 'rest');
-assert.equal(background.context.resolveStorageMode({ storageMode: 'direct', apiKey: 'legacy-key' }), 'direct');
+assert.equal(background.context.resolveStorageMode({ storageMode: 'direct', apiKey: 'legacy-key' }), 'native');
 
-const directBackground = loadBackground();
-const directSettings = {
-  storageMode: 'direct',
+const nativeBackground = loadBackground();
+const nativeSettings = {
+  storageMode: 'native',
   basePath: '個人創作/社群推文',
   mediaPath: '附件/Social Post to Obsidian'
 };
-const directResult = await directBackground.context.savePostBundle(
-  { ...postData, media: [{ url: 'https://pbs.twimg.com/media/good.jpg', alt: '直接寫入圖片' }] },
+const nativeResult = await nativeBackground.context.savePostBundle(
+  { ...postData, media: [{ url: 'https://pbs.twimg.com/media/good.jpg', alt: 'Helper 寫入圖片' }] },
   path,
   filename,
-  directSettings
+  nativeSettings
 );
-assert.deepEqual(JSON.parse(JSON.stringify(directResult)), { savedMedia: 1, failedMedia: 0 });
-assert.equal(directBackground.directWrites.length, 2);
+assert.deepEqual(JSON.parse(JSON.stringify(nativeResult)), { savedMedia: 1, failedMedia: 0 });
+const nativeWrites = nativeBackground.nativeMessages.filter(message => message.action === 'write');
+assert.equal(nativeWrites.length, 2);
 assert.match(
-  directBackground.directWrites[0].path,
+  nativeWrites[0].path,
   /附件\/Social Post to Obsidian\/2026-07-18_1100_圖片同步測試\/image-01\.jpg$/
 );
-assert.equal(directBackground.directWrites[1].path, path);
-assert.match(directBackground.directWrites[1].content, /!\[直接寫入圖片\]/);
-assert.deepEqual(directBackground.directCleanups, ['附件/Social Post to Obsidian']);
+assert.equal(nativeWrites[0].encoding, 'base64');
+assert.equal(nativeWrites[0].data, '/9j/');
+assert.equal(nativeWrites[1].path, path);
+assert.equal(nativeWrites[1].encoding, 'utf8');
+assert.match(nativeWrites[1].data, /!\[Helper 寫入圖片\]/);
+assert.deepEqual(JSON.parse(JSON.stringify(nativeBackground.nativeMessages.at(-1))), {
+  action: 'cleanEmptyMediaFolders',
+  path: '附件/Social Post to Obsidian'
+});
 
-directBackground.stored.storageMode = 'direct';
-directBackground.stored.basePath = '個人創作/社群推文';
-await directBackground.context.handleSaveDraft({
-  content: '直接暫存草稿',
+nativeBackground.stored.storageMode = 'native';
+nativeBackground.stored.basePath = '個人創作/社群推文';
+await nativeBackground.context.handleSaveDraft({
+  content: 'Helper 暫存草稿',
   platform: 'x',
   timestamp: '2026-07-18T11:01:00+08:00'
 }, null);
-assert.equal(directBackground.directWrites.at(-1).path, '個人創作/社群推文/_草稿_Twitter.md');
-assert.match(directBackground.directWrites.at(-1).content, /直接暫存草稿/);
+assert.equal(nativeBackground.nativeMessages.at(-1).path, '個人創作/社群推文/_草稿_Twitter.md');
+assert.match(nativeBackground.nativeMessages.at(-1).data, /Helper 暫存草稿/);
 
-await directBackground.context.deleteVaultFile('個人創作/社群推文/_草稿_Twitter.md', directSettings);
-assert.deepEqual(directBackground.directDeletes, ['個人創作/社群推文/_草稿_Twitter.md']);
+await nativeBackground.context.deleteVaultFile('個人創作/社群推文/_草稿_Twitter.md', nativeSettings);
+assert.deepEqual(JSON.parse(JSON.stringify(nativeBackground.nativeMessages.at(-1))), {
+  action: 'remove',
+  path: '個人創作/社群推文/_草稿_Twitter.md'
+});
 
-directBackground.setDirectMode('permission');
-await directBackground.context.saveWithQueueFallback(
+nativeBackground.setNativeMode('unavailable');
+await nativeBackground.context.saveWithQueueFallback(
   path,
   filename,
   { ...postData, media: [] },
-  directSettings,
+  nativeSettings,
   null
 );
-assert.equal(directBackground.stored.offlineQueue.length, 1);
-assert.equal(directBackground.stored.offlineQueue[0].data.content, postData.content);
+assert.equal(nativeBackground.stored.offlineQueue.length, 1);
+assert.equal(nativeBackground.stored.offlineQueue[0].data.content, postData.content);
 
-directBackground.stored.storageMode = 'direct';
-directBackground.stored.mediaPath = '附件/Social Post to Obsidian';
-directBackground.setDirectMode('ok');
-await directBackground.context.retryOfflineQueue();
-assert.deepEqual(JSON.parse(JSON.stringify(directBackground.stored.offlineQueue)), []);
-assert.equal(directBackground.stored.recentSaves[0].filename, filename);
+nativeBackground.stored.storageMode = 'native';
+nativeBackground.stored.mediaPath = '附件/Social Post to Obsidian';
+nativeBackground.setNativeMode('ok');
+await nativeBackground.context.retryOfflineQueue();
+assert.deepEqual(JSON.parse(JSON.stringify(nativeBackground.stored.offlineQueue)), []);
+assert.equal(nativeBackground.stored.recentSaves[0].filename, filename);
 
+background.stored.storageMode = 'rest';
 background.setLocalMode('offline');
 await background.context.saveWithQueueFallback(
   path,

@@ -1,7 +1,5 @@
 // Service Worker - 處理貼文存檔
 
-importScripts('vault-access.js');
-
 // 啟動時印出版本，方便在 SW console 確認載入的版本
 try {
   console.log('[Social Post to Obsidian] background v' + chrome.runtime.getManifest().version + ' 已啟動');
@@ -25,9 +23,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'RETRY_QUEUE':
       enqueue('offline-retry', retryOfflineQueue);
       break;
-    case 'START_VAULT_SESSION':
-      startVaultSession().then(
-        () => sendResponse({ ok: true }),
+    case 'GET_NATIVE_STATUS':
+      sendNativeRequest({ action: 'ping' }).then(
+        (response) => sendResponse(response),
+        (error) => sendResponse({ ok: false, error: error.message })
+      );
+      return true;
+    case 'CHOOSE_NATIVE_VAULT':
+      chooseNativeVault().then(
+        (response) => sendResponse(response),
         (error) => sendResponse({ ok: false, error: error.message })
       );
       return true;
@@ -42,41 +46,22 @@ const taskChains = {};
 // 記錄每平台最後發佈的貼文時間，用來丟棄遲到的舊草稿
 const lastPublishTimestamp = {};
 const STORAGE_SETTING_KEYS = ['storageMode', 'apiKey', 'port', 'basePath', 'mediaPath'];
-const VAULT_SESSION_DOCUMENT = 'offscreen/vault-session.html';
+const NATIVE_HOST_NAME = 'com.lostshin.social_post_to_obsidian';
 const MAINTENANCE_ALARM = 'sp2o-vault-maintenance';
-let creatingVaultSession = null;
 
 function resolveStorageMode(settings) {
-  return settings.storageMode || (settings.apiKey ? 'rest' : 'direct');
+  if (settings.storageMode === 'direct') return 'native';
+  return settings.storageMode || (settings.apiKey ? 'rest' : 'native');
 }
 
 async function getStorageSettings() {
   return chrome.storage.local.get(STORAGE_SETTING_KEYS);
 }
 
-async function ensureVaultSession() {
-  if (creatingVaultSession) return creatingVaultSession;
-  creatingVaultSession = (async () => {
-    let exists;
-    if ('getContexts' in chrome.runtime) {
-      const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
-      exists = contexts.length > 0;
-    } else {
-      const matchedClients = await clients.matchAll();
-      exists = matchedClients.some((client) => client.url.includes(VAULT_SESSION_DOCUMENT));
-    }
-    if (exists) return;
-    await chrome.offscreen.createDocument({
-      url: VAULT_SESSION_DOCUMENT,
-      reasons: ['WORKERS'],
-      justification: 'Keep the user-authorized Vault file session available for background saves.'
-    });
-  })();
-  try {
-    await creatingVaultSession;
-  } finally {
-    creatingVaultSession = null;
-  }
+async function sendNativeRequest(message) {
+  const response = await chrome.runtime.sendNativeMessage(NATIVE_HOST_NAME, message);
+  if (!response?.ok) throw new Error(response?.error || '本機 Helper 沒有回應');
+  return response;
 }
 
 function enqueue(platform, task) {
@@ -84,11 +69,17 @@ function enqueue(platform, task) {
   taskChains[key] = (taskChains[key] || Promise.resolve()).then(task).catch(() => {});
 }
 
-async function startVaultSession() {
-  await ensureVaultSession();
+async function startNativeMaintenance() {
   chrome.alarms.create(MAINTENANCE_ALARM, { periodInMinutes: 15 });
   const settings = await getStorageSettings();
   await cleanupEmptyMediaFolders(settings);
+}
+
+async function chooseNativeVault() {
+  const response = await sendNativeRequest({ action: 'chooseVault' });
+  await chrome.storage.local.set({ storageMode: 'native', vaultName: response.vaultName });
+  await startNativeMaintenance();
+  return response;
 }
 
 // 處理草稿存檔
@@ -187,9 +178,9 @@ async function saveWithQueueFallback(fullPath, filename, data, settings, tabId) 
         data, path: fullPath, filename,
         platform: data.platform, url: data.url
       });
-      const direct = resolveStorageMode(settings) === 'direct';
-      notifyResult(tabId, false, direct
-        ? 'Vault 無法寫入，已加入待存佇列，重新授權後自動補存'
+      const native = resolveStorageMode(settings) === 'native';
+      notifyResult(tabId, false, native
+        ? '本機 Helper 無法寫入，已加入待存佇列，恢復後自動補存'
         : 'Obsidian 未連線，已加入待存佇列，連線後自動補存');
       return;
     }
@@ -260,12 +251,13 @@ function normalizeVaultPath(path) {
 }
 
 async function cleanupEmptyMediaFolders(settings) {
-  if (resolveStorageMode(settings) !== 'direct') return 0;
+  if (resolveStorageMode(settings) !== 'native') return 0;
   try {
-    await ensureVaultSession();
-    const removed = await SP2OVaultAccess.removeEmptyDirectories(
-      normalizeVaultPath(settings.mediaPath || DEFAULT_MEDIA_PATH)
-    );
+    const response = await sendNativeRequest({
+      action: 'cleanEmptyMediaFolders',
+      path: normalizeVaultPath(settings.mediaPath || DEFAULT_MEDIA_PATH)
+    });
+    const removed = response.removed || 0;
     if (removed > 0) {
       console.log('[Social Post to Obsidian] Removed empty media folders:', removed);
     }
@@ -337,10 +329,9 @@ async function deleteDraft(filepath, apiKey, port) {
 }
 
 async function deleteVaultFile(filepath, settings) {
-  if (resolveStorageMode(settings) === 'direct') {
+  if (resolveStorageMode(settings) === 'native') {
     try {
-      await ensureVaultSession();
-      await SP2OVaultAccess.removeFile(filepath);
+      await sendNativeRequest({ action: 'remove', path: filepath });
       console.log('[Social Post to Obsidian] Draft deleted:', filepath);
     } catch (error) {
       console.log('[Social Post to Obsidian] Draft delete skipped:', error.message);
@@ -397,7 +388,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   } else if (alarm.name === MAINTENANCE_ALARM) {
     enqueue('vault-maintenance', async () => {
       const settings = await getStorageSettings();
-      if (resolveStorageMode(settings) === 'direct') {
+      if (resolveStorageMode(settings) === 'native') {
         await cleanupEmptyMediaFolders(settings);
       } else {
         chrome.alarms.clear(MAINTENANCE_ALARM);
@@ -419,8 +410,8 @@ async function retryOfflineQueue() {
     if (!settings.apiKey) return;
   } else {
     try {
-      const permission = await SP2OVaultAccess.getPermissionStatus();
-      if (permission.status !== 'granted') return;
+      const status = await sendNativeRequest({ action: 'ping' });
+      if (!status.configured) return;
     } catch {
       return;
     }
@@ -460,11 +451,16 @@ chrome.storage.local.get(QUEUE_KEY).then((stored) => {
 });
 
 getStorageSettings().then(async (settings) => {
-  if (settings.storageMode !== 'direct') return;
-  const permission = await SP2OVaultAccess.getPermissionStatus();
-  if (permission.name) await startVaultSession();
+  if (settings.storageMode !== 'native' && settings.storageMode !== 'direct') return;
+  if (settings.storageMode === 'direct') {
+    await chrome.storage.local.set({ storageMode: 'native' });
+  }
+  const status = await sendNativeRequest({ action: 'ping' });
+  if (!status.configured) return;
+  await chrome.storage.local.set({ vaultName: status.vaultName });
+  await startNativeMaintenance();
 }).catch((error) => {
-  console.log('[Social Post to Obsidian] Vault session not restored:', error.message);
+  console.log('[Social Post to Obsidian] Native Helper not ready:', error.message);
 });
 
 // 記錄最近儲存（popup 顯示用，保留 5 筆）
@@ -649,10 +645,15 @@ function apiBase(port) {
 }
 
 async function saveVaultFile(content, filename, settings, contentType) {
-  if (resolveStorageMode(settings) === 'direct') {
+  if (resolveStorageMode(settings) === 'native') {
     try {
-      await ensureVaultSession();
-      await SP2OVaultAccess.writeFile(filename, content);
+      const binary = typeof content !== 'string';
+      await sendNativeRequest({
+        action: 'write',
+        path: filename,
+        encoding: binary ? 'base64' : 'utf8',
+        data: binary ? arrayBufferToBase64(content) : content
+      });
       return;
     } catch (error) {
       error.isVaultWriteError = true;
@@ -661,6 +662,17 @@ async function saveVaultFile(content, filename, settings, contentType) {
     }
   }
   return saveFileToObsidian(content, filename, settings.apiKey, settings.port || 27123, contentType);
+}
+
+function arrayBufferToBase64(content) {
+  const bytes = content instanceof ArrayBuffer
+    ? new Uint8Array(content)
+    : new Uint8Array(content.buffer, content.byteOffset, content.byteLength);
+  const chunks = [];
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 0x8000)));
+  }
+  return btoa(chunks.join(''));
 }
 
 async function saveFileToObsidian(content, filename, apiKey, port, contentType) {

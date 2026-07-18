@@ -17,10 +17,11 @@ trap cleanup EXIT
 
 node "${PROJECT_ROOT}/scripts/validate-extension.mjs"
 
-mkdir -p "${OUTPUT_DIR}" "${STAGE_DIR}/content" "${STAGE_DIR}/icons" "${STAGE_DIR}/popup"
+mkdir -p "${OUTPUT_DIR}" "${STAGE_DIR}/content" "${STAGE_DIR}/icons" "${STAGE_DIR}/native" "${STAGE_DIR}/popup"
 cp "${PROJECT_ROOT}/manifest.json" "${PROJECT_ROOT}/background.js" "${PROJECT_ROOT}/LICENSE" "${STAGE_DIR}/"
 cp "${PROJECT_ROOT}"/content/*.js "${STAGE_DIR}/content/"
 cp "${PROJECT_ROOT}"/icons/* "${STAGE_DIR}/icons/"
+cp "${PROJECT_ROOT}"/native/* "${STAGE_DIR}/native/"
 cp "${PROJECT_ROOT}"/popup/* "${STAGE_DIR}/popup/"
 
 rm -f "${ARCHIVE}"
@@ -30,9 +31,11 @@ popd >/dev/null
 
 unzip -tq "${ARCHIVE}"
 PACKAGE_FILES="$(unzip -Z1 "${ARCHIVE}")"
-if ! grep -q '^manifest\.json$' <<<"${PACKAGE_FILES}"; then
-  echo "Packaging failed: manifest.json is not at the ZIP root" >&2
-  exit 1
-fi
+for required_file in manifest.json native/host.rb native/install-host.sh; do
+  if ! grep -q "^${required_file}$" <<<"${PACKAGE_FILES}"; then
+    echo "Packaging failed: ${required_file} is missing" >&2
+    exit 1
+  fi
+done
 
 echo "Created ${ARCHIVE}"

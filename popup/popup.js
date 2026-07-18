@@ -26,19 +26,19 @@ function readPort() {
 }
 
 function resolveStorageMode(settings) {
-  return settings.storageMode || (settings.apiKey ? 'rest' : 'direct');
+  if (settings.storageMode === 'direct') return 'native';
+  return settings.storageMode || (settings.apiKey ? 'rest' : 'native');
 }
 
 function updateModeUI() {
-  const direct = storageModeSelect.value === 'direct';
-  directSettings.hidden = !direct;
-  restSettings.hidden = direct;
-  testBtn.textContent = direct ? '檢查權限' : '測試連線';
+  const native = storageModeSelect.value === 'native';
+  directSettings.hidden = !native;
+  restSettings.hidden = native;
+  testBtn.textContent = native ? '檢查 Helper' : '測試連線';
 }
 
-async function startVaultSession() {
-  const response = await chrome.runtime.sendMessage({ type: 'START_VAULT_SESSION' });
-  if (!response?.ok) throw new Error(response?.error || '無法啟動 Vault 背景工作階段');
+async function getNativeStatus() {
+  return chrome.runtime.sendMessage({ type: 'GET_NATIVE_STATUS' });
 }
 
 // 載入已儲存的設定
@@ -62,11 +62,11 @@ async function loadSettings() {
 
   if (settings.vaultName) vaultName.textContent = settings.vaultName;
 
-  if (storageModeSelect.value === 'direct') {
+  if (storageModeSelect.value === 'native') {
     try {
-      const permission = await SP2OVaultAccess.getPermissionStatus();
-      if (permission.name) vaultName.textContent = permission.name;
-      settingsPanel.open = permission.status !== 'granted';
+      const status = await getNativeStatus();
+      if (status?.vaultName) vaultName.textContent = status.vaultName;
+      settingsPanel.open = !status?.ok || !status?.configured;
     } catch {
       settingsPanel.open = true;
     }
@@ -83,16 +83,16 @@ async function saveSettings() {
   const basePath = basePathInput.value.trim() || '個人創作/社群推文';
   const mediaPath = mediaPathInput.value.trim() || '附件/Social Post to Obsidian';
 
-  if (storageMode === 'direct') {
-    let permission;
+  if (storageMode === 'native') {
+    let nativeStatus;
     try {
-      permission = await SP2OVaultAccess.getPermissionStatus();
+      nativeStatus = await getNativeStatus();
     } catch (error) {
-      showStatus(`無法讀取 Vault 權限 · ${error.message}`, 'error');
+      showStatus(`無法連線本機 Helper · ${error.message}`, 'error');
       return;
     }
-    if (permission.status !== 'granted') {
-      showStatus(permission.status === 'missing' ? '請先選擇 Vault' : '請先重新授權 Vault', 'error');
+    if (!nativeStatus?.ok || !nativeStatus?.configured) {
+      showStatus(nativeStatus?.error ? `本機 Helper 無法使用 · ${nativeStatus.error}` : '請先安裝 Helper 並選擇 Vault', 'error');
       return;
     }
   } else {
@@ -115,17 +115,16 @@ async function saveSettings() {
 async function chooseVault() {
   chooseVaultBtn.disabled = true;
   try {
-    const handle = await SP2OVaultAccess.selectVault();
-    storageModeSelect.value = 'direct';
+    const response = await chrome.runtime.sendMessage({ type: 'CHOOSE_NATIVE_VAULT' });
+    if (!response?.ok) throw new Error(response?.error || '本機 Helper 無法選擇 Vault');
+    storageModeSelect.value = 'native';
     updateModeUI();
-    vaultName.textContent = handle.name;
-    await chrome.storage.local.set({ storageMode: 'direct', vaultName: handle.name });
-    await startVaultSession();
-    showStatus(`已授權 Vault：${handle.name}`, 'success');
+    vaultName.textContent = response.vaultName;
+    showStatus(`已連接 Vault：${response.vaultName}`, 'success');
     await checkConnection();
     chrome.runtime.sendMessage({ type: 'RETRY_QUEUE' });
   } catch (error) {
-    if (error.name !== 'AbortError') showStatus(`無法選擇 Vault · ${error.message}`, 'error');
+    showStatus(`無法選擇 Vault · ${error.message}`, 'error');
   } finally {
     chooseVaultBtn.disabled = false;
   }
@@ -133,22 +132,21 @@ async function chooseVault() {
 
 // 測試連線
 async function testConnection() {
-  if (storageModeSelect.value === 'direct') {
+  if (storageModeSelect.value === 'native') {
     testBtn.disabled = true;
     testBtn.textContent = '檢查中…';
     try {
-      const permission = await SP2OVaultAccess.requestPermission();
-      if (permission.name) vaultName.textContent = permission.name;
-      if (permission.status === 'granted') {
-        await startVaultSession();
-        showStatus(`Vault 權限正常 · ${permission.name}`, 'success');
+      const nativeStatus = await getNativeStatus();
+      if (nativeStatus?.vaultName) vaultName.textContent = nativeStatus.vaultName;
+      if (nativeStatus?.ok && nativeStatus?.configured) {
+        showStatus(`本機 Helper 已連線 · ${nativeStatus.vaultName}`, 'success');
         chrome.runtime.sendMessage({ type: 'RETRY_QUEUE' });
       } else {
-        showStatus(permission.status === 'missing' ? '請先選擇 Vault' : 'Vault 尚未授權', 'error');
+        showStatus(nativeStatus?.error ? `本機 Helper 無法使用 · ${nativeStatus.error}` : '請先安裝 Helper 並選擇 Vault', 'error');
       }
       await checkConnection();
     } catch (error) {
-      showStatus(`權限檢查失敗 · ${error.message}`, 'error');
+      showStatus(`Helper 檢查失敗 · ${error.message}`, 'error');
     } finally {
       testBtn.disabled = false;
       updateModeUI();
@@ -214,21 +212,20 @@ function showStatus(message, type) {
 async function checkConnection() {
   const settings = await chrome.storage.local.get(['storageMode', 'apiKey', 'port', 'vaultName']);
 
-  if (resolveStorageMode(settings) === 'direct') {
+  if (resolveStorageMode(settings) === 'native') {
     try {
-      const permission = await SP2OVaultAccess.getPermissionStatus();
-      if (permission.name) vaultName.textContent = permission.name;
-      if (permission.status === 'granted') {
-        await startVaultSession();
+      const nativeStatus = await getNativeStatus();
+      if (nativeStatus?.vaultName) vaultName.textContent = nativeStatus.vaultName;
+      if (nativeStatus?.ok && nativeStatus?.configured) {
         connDot.className = 'dot ok';
-        connText.textContent = `Vault 背景連線中 · ${permission.name}`;
+        connText.textContent = `本機 Helper 已連線 · ${nativeStatus.vaultName}`;
       } else {
         connDot.className = 'dot fail';
-        connText.textContent = permission.status === 'missing' ? '尚未選擇 Vault' : 'Vault 需要重新授權';
+        connText.textContent = nativeStatus?.error ? '本機 Helper 無法使用' : '尚未選擇 Vault';
       }
     } catch {
       connDot.className = 'dot fail';
-      connText.textContent = '無法讀取 Vault 權限';
+      connText.textContent = '本機 Helper 尚未安裝';
     }
     return;
   }
@@ -265,8 +262,8 @@ async function renderQueueInfo() {
   const offlineQueue = stored.offlineQueue || [];
   queueInfo.hidden = offlineQueue.length === 0;
   if (offlineQueue.length > 0) {
-    const direct = resolveStorageMode(stored) === 'direct';
-    queueInfo.textContent = `待補存 ${offlineQueue.length} 則（${direct ? 'Vault 重新授權' : 'Obsidian 連線'}後自動補存）`;
+    const native = resolveStorageMode(stored) === 'native';
+    queueInfo.textContent = `待補存 ${offlineQueue.length} 則（${native ? '本機 Helper 恢復' : 'Obsidian 連線'}後自動補存）`;
   }
 }
 

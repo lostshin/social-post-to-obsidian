@@ -43,22 +43,22 @@
           <div class="form-group">
             <label for="storageMode">寫入方式</label>
             <select id="storageMode">
-              <option value="direct">直接寫入 Vault（推薦）</option>
+              <option value="native">本機 Helper（推薦）</option>
               <option value="rest">Local REST API</option>
             </select>
-            <small>直接寫入不需要 Obsidian 外掛或 API Key</small>
+            <small>本機 Helper 不需要 Obsidian 外掛或 API Key</small>
           </div>
 
           <div id="directSettings" class="mode-panel">
             <div class="label-row">
               <label>Vault 資料夾</label>
-              <span>Chrome 檔案權限</span>
+              <span>Native Messaging</span>
             </div>
             <div class="vault-picker">
               <span id="vaultName">尚未選擇</span>
               <button type="button" id="chooseVaultBtn" class="secondary">選擇 Vault</button>
             </div>
-            <small>請選擇包含 <code>.obsidian</code> 的 Vault 根目錄</small>
+            <small>首次使用需安裝 Helper，再選擇包含 <code>.obsidian</code> 的 Vault 根目錄</small>
           </div>
 
           <div id="restSettings" class="mode-panel" hidden>
@@ -129,7 +129,6 @@
     </footer>
   </div>
 
-  <script src="../vault-access.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

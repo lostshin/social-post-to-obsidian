@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = new URL('../', import.meta.url);
@@ -41,8 +41,8 @@ if (manifest.manifest_version !== 3) {
   fail('manifest_version must be 3');
 }
 
-if (!(manifest.permissions || []).includes('offscreen')) {
-  fail('offscreen permission is required for the Direct Vault session');
+if (!(manifest.permissions || []).includes('nativeMessaging')) {
+  fail('nativeMessaging permission is required for the local Vault helper');
 }
 
 if (!/^\d+\.\d+\.\d+$/.test(manifest.version)) {
@@ -52,10 +52,8 @@ if (!/^\d+\.\d+\.\d+$/.test(manifest.version)) {
 const referencedFiles = new Set([
   manifest.background?.service_worker,
   manifest.action?.default_popup,
-  'vault-access.js',
-  'offscreen/vault-session.html',
-  'offscreen/vault-session.js',
-  'offscreen/vault-session-worker.js',
+  'native/host.rb',
+  'native/install-host.sh',
   ...Object.values(manifest.icons || {}),
   ...Object.values(manifest.action?.default_icon || {}),
   ...(manifest.content_scripts || []).flatMap((script) => script.js || [])
@@ -109,9 +107,6 @@ for (const permission of manifest.host_permissions || []) {
 
 const javascriptFiles = [
   'background.js',
-  'vault-access.js',
-  'offscreen/vault-session.js',
-  'offscreen/vault-session-worker.js',
   ...readdirSync(fromRoot('content')).filter((file) => file.endsWith('.js')).map((file) => join('content', file)),
   ...readdirSync(fromRoot('popup')).filter((file) => file.endsWith('.js')).map((file) => join('popup', file))
 ];
@@ -119,5 +114,11 @@ const javascriptFiles = [
 for (const path of javascriptFiles) {
   execFileSync(process.execPath, ['--check', fromRoot(path).pathname], { stdio: 'inherit' });
 }
+
+for (const path of ['native/host.rb', 'native/install-host.sh']) {
+  if ((statSync(fromRoot(path)).mode & 0o111) === 0) fail(`${path} must be executable`);
+}
+execFileSync('/usr/bin/ruby', ['-c', fromRoot('native/host.rb').pathname], { stdio: 'inherit' });
+execFileSync('/bin/zsh', ['-n', fromRoot('native/install-host.sh').pathname], { stdio: 'inherit' });
 
 console.log(`Validated Manifest V3 extension v${manifest.version}: ${javascriptFiles.length} scripts, ${referencedFiles.size} referenced assets, ${Object.keys(storeAssets).length} store assets.`);
