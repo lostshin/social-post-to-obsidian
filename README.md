@@ -15,52 +15,65 @@
 
 ![Social Post to Obsidian 預覽](assets/social-preview.png)
 
-## 功能
+## 這個外掛做什麼
 
-- 發佈 X 或 Threads 貼文後自動建立 Markdown 筆記
-- 將貼文圖片下載到 Vault，並用相對路徑嵌入筆記
-- 支援 X 多圖與 Threads 單圖、輪播圖及純圖片貼文
-- 保留來源網址、發佈時間、回覆關係與引用貼文
-- 打字時暫存草稿，發佈後自動清除草稿檔
-- Obsidian 未開啟時加入離線佇列，恢復連線後自動補存
-- Popup 顯示連線狀態、未發佈草稿與最近儲存紀錄
-- 無第三方 JavaScript 依賴、無雲端服務、無分析追蹤
+- 發佈 X 或 Threads 貼文後，自動建立 Markdown 筆記。
+- 將靜態圖片下載到自訂的 Vault 附件路徑，並以相對路徑嵌入筆記。
+- 保留來源網址、發佈時間、回覆關係與引用貼文資訊。
+- 撰寫時自動暫存草稿，發佈後清除草稿檔；斷線時排入離線佇列並自動補存。
+- Popup 可預覽與開啟最近筆記、清除草稿、刪除 Vault 筆記，以及同步在 Obsidian 外部完成的刪除。
+- 零第三方 JavaScript 依賴、零開發者後端、零遙測與廣告。
 
-## 快速開始
+## 支援環境與寫入方式
 
-### 1. 安裝 Obsidian Local REST API
+| 寫入方式 | 平台 | 需要什麼 |
+| --- | --- | --- |
+| 本機 Helper（預設、推薦） | macOS + Google Chrome | 隨附的開源 Native Helper；不需要 Obsidian 外掛或 API Key |
+| Local REST API | macOS、Windows、Linux + Google Chrome | Obsidian 社群外掛 [Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api) 與 API Key |
 
-1. 安裝 [Obsidian](https://obsidian.md/)。
-2. 在 Obsidian 的「社群外掛」安裝並啟用 [Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api)。
-3. 開啟 Local REST API 設定頁，保留稍後需要使用的 API Key。
+兩種模式都需要 [Obsidian](https://obsidian.md/)。本機 Helper 目前只支援 macOS；其他系統請在 Popup 選擇 Local REST API。
 
-### 2. 下載並載入擴充功能
+## 安裝
 
-目前可用開發人員模式安裝；Chrome Web Store 版本仍在準備中。
+完整步驟、更新方式與移除方法請見 [INSTALL.md](INSTALL.md)。以下是最短流程。
 
-1. 從 [Releases](https://github.com/lostshin/social-post-to-obsidian/releases) 下載最新的 `social-post-to-obsidian-v*.zip`。若尚無 Release，可先[下載目前原始碼 ZIP](https://github.com/lostshin/social-post-to-obsidian/archive/refs/heads/main.zip)。
-2. 解壓縮 ZIP。
-3. 在 Chrome 開啟 `chrome://extensions/`。
-4. 開啟右上角的「開發人員模式」。
-5. 選擇「載入未封裝項目」，指定剛才解壓縮的資料夾。
+### 從 GitHub Release 手動安裝
 
-> Chrome 無法直接載入 ZIP；必須先解壓縮。更新手動安裝版本後，請在擴充功能頁按「重新載入」，再重新整理已開啟的 X／Threads 分頁。
+1. 從 [Releases](https://github.com/lostshin/social-post-to-obsidian/releases) 下載 `social-post-to-obsidian-v*.zip` 並解壓縮到固定資料夾。
+2. 開啟 `chrome://extensions/` → 啟用「開發人員模式」→「載入未封裝項目」→ 選擇含 `manifest.json` 的資料夾。
+3. macOS 使用者若採本機 Helper，在該資料夾執行：
 
-### 3. 連接 Obsidian
+   ```bash
+   ./native/install-host.sh
+   ```
+
+4. 在 `chrome://extensions/` 重新載入外掛，開啟 Popup，按「選擇 Vault」。
+
+Chrome 不能直接載入 ZIP。更新手動安裝版時也要保留相同資料夾位置，否則 extension ID、既有設定與 Helper 授權可能改變。
+
+### 從 Chrome Web Store 安裝
+
+商店版發布後可直接從 Chrome Web Store 安裝擴充功能。若要使用預設的本機 Helper，仍需從同版本 GitHub Release 下載 `social-post-to-obsidian-helper-v*-macos.zip`，並用商店版 extension ID 執行：
+
+```bash
+./native/install-host.sh <extension-id>
+```
+
+Chrome Web Store 基於安全限制不會自動執行本機安裝程式。若不想安裝 Helper，可改用 Local REST API 模式。
+
+## 設定與使用
 
 1. 將擴充功能固定在 Chrome 工具列並開啟 Popup。
-2. 貼上 Local REST API Key。
-3. 使用預設 HTTP port `27123`，或 Local REST API 的 HTTPS port `27124`。
-4. 視需要調整筆記與圖片在 Vault 內的路徑。
-5. 按「測試連線」，成功後再按「儲存設定」。
+2. 本機 Helper 模式：按「選擇 Vault」，選擇含 `.obsidian` 的 Vault 根目錄。
+3. Local REST API 模式：輸入 API Key、HTTP port `27123` 或 HTTPS port `27124`，再測試連線。
+4. 視需要調整筆記路徑與圖片路徑，按「儲存設定」。
+5. 重新整理已開啟的 X／Threads 分頁，照平常方式撰寫並發佈貼文。
 
-### 4. 開始使用
-
-保持 Obsidian 與 Local REST API 啟用。照平常方式在 X 或 Threads 撰寫並發佈貼文，擴充功能會自動建立筆記；若 Obsidian 暫時未連線，正式貼文會先進入離線佇列，恢復連線後再補存。
+Popup 的「未發佈草稿」與「最近儲存」可顯示內容預覽；箭頭會開啟 Obsidian 筆記，垃圾桶只刪除 Vault 筆記，不會刪除社群平台原文。
 
 ## 儲存結果
 
-筆記預設存放在 `個人創作/社群推文`，圖片預設存放在 Vault 根目錄下的 `附件/Social Post to Obsidian`。兩個路徑都可在 Popup 自訂：
+預設筆記路徑是 `個人創作/社群推文`，預設圖片路徑是 `附件/Social Post to Obsidian`：
 
 ```text
 個人創作/社群推文/
@@ -72,61 +85,60 @@
     └── image-02.webp
 ```
 
-Markdown 使用標準相對連結：
+Markdown 使用可從筆記位置解析的標準相對連結。若個別圖片下載失敗，文字筆記仍會儲存，該圖片則保留遠端網址。
 
-```markdown
-![圖片說明](<../../附件/Social Post to Obsidian/2026-07-18_1100_圖片同步測試/image-01.jpg>)
+## 權限與資料流
+
+擴充功能只在使用者自己的裝置與選定服務間處理資料：
+
+```text
+X／Threads 分頁
+  → Chrome extension
+  → macOS Native Helper 或 127.0.0.1 Local REST API
+  → 使用者自己的 Obsidian Vault
 ```
 
-若個別圖片下載失敗，文字筆記仍會正常儲存，並暫時保留該圖片的遠端網址。
+- `storage`：保存寫入模式、路徑、可選的 REST API 設定、離線佇列及最近存檔資訊。
+- `nativeMessaging`：在 macOS 與使用者自行安裝的本機 Helper 溝通。
+- `notifications`：原始分頁已關閉時回報正式貼文的存檔結果。
+- `alarms`：定期補存離線佇列與維護 Vault 狀態。
+- X／Threads 網站存取：只處理使用者正在撰寫或剛發佈的貼文及相關來源資訊。
+- X／Meta 圖片 CDN：下載該貼文中的靜態圖片。
+- `127.0.0.1`：只供使用者選擇 Local REST API 模式時連接本機 Obsidian 外掛。
 
-## 權限與隱私
-
-所有貼文資料都由瀏覽器直接寫入本機 Obsidian Local REST API，不會傳送到本專案的伺服器，也沒有遙測或分析服務。
-
-擴充功能使用的主要權限如下：
-
-- `storage`：儲存 Local REST API 設定、離線佇列與最近存檔紀錄
-- `notifications`：在原始分頁不存在時回報存檔結果
-- `alarms`：定期重試離線佇列
-- `127.0.0.1`：連接本機 Obsidian Local REST API
-- X 與 Meta 圖片 CDN：下載使用者剛發佈貼文中的圖片
-
-API Key 儲存在 Chrome 的 extension local storage。請勿分享包含個人設定的瀏覽器設定檔。
-
-完整資料處理、保存與刪除方式請見[隱私權政策](PRIVACY.md)。
+專案沒有開發者營運的伺服器，不販售或分享資料，也不執行遠端程式碼。詳情見[隱私權政策](PRIVACY.md)。
 
 ## 已知限制
 
-- 目前同步靜態圖片；影片與動態 GIF 不會下載到 Vault。
-- X 與 Threads 的內部 API 結構可能改變；若平台更新造成解析失效，請提交 issue 並附上平台、操作步驟與擴充功能版本，避免貼出 API Key 或私人貼文內容。
-- 離線時間過長時，Threads 的簽章圖片網址可能失效；此時筆記仍會保存，但圖片可能只能留下原始遠端連結。
+- Native Helper 目前只支援 macOS 與 Google Chrome；Windows、Linux 或其他 Chromium 瀏覽器請使用 Local REST API，或自行貢獻對應安裝支援。
+- 目前只同步靜態圖片；影片與動態 GIF 不會下載。
+- X 與 Threads 的內部 API 可能改變。回報解析問題時請移除 API Key、cookies、私人貼文與完整平台回應。
+- Threads 圖片網址帶有時效簽章；離線過久後可能只能留下遠端網址。
+- iCloud Vault 首次刪除筆記時，macOS 可能要求允許 Ruby／Chrome 控制 Finder。
 
-## 開發與驗證
+## 開發、測試與發布
 
-本專案使用原生 JavaScript、HTML 與 CSS，不需要安裝 package。提交前請執行：
+本專案使用原生 JavaScript、HTML、CSS 與 macOS 系統 Ruby，不需要安裝 npm package。提交前執行：
 
 ```bash
 node scripts/validate-extension.mjs
 node tests/media-sync.test.mjs
+./scripts/package-extension.sh
 git diff --check
 ```
 
-驗證內容包含 Manifest 與資產完整性、所有 JavaScript 語法，以及 X／Threads 圖片解析、Vault 二進位寫入、失敗降級與離線重試。
+打包後 `dist/` 會包含：
 
-若要建立可上傳 Chrome Web Store 的乾淨 ZIP：
+- `social-post-to-obsidian-v<version>.zip`：GitHub 手動安裝與 Chrome Web Store 上傳套件。
+- `social-post-to-obsidian-helper-v<version>-macos.zip`：商店版使用者需要的 macOS Helper。
+- `SHA256SUMS`：兩個 ZIP 的 SHA-256 checksum。
 
-```bash
-./scripts/package-extension.sh
-```
+貢獻方式見 [CONTRIBUTING.md](CONTRIBUTING.md)，Chrome Web Store 欄位、權限理由與審查步驟見 [docs/CHROME_WEB_STORE.md](docs/CHROME_WEB_STORE.md)。
 
-套件會輸出至 `dist/`。完整開發流程請見[貢獻指南](CONTRIBUTING.md)，上架欄位、權限理由與素材清單請見 [Chrome Web Store 發布指南](docs/CHROME_WEB_STORE.md)。
+## 回報與授權
 
-## 回報問題
+- Bug 與功能建議：[GitHub Issues](https://github.com/lostshin/social-post-to-obsidian/issues)
+- 安全漏洞：[SECURITY.md](SECURITY.md)
+- 授權：[MIT License](LICENSE)
 
-- 一般 bug 或功能建議：[GitHub Issues](https://github.com/lostshin/social-post-to-obsidian/issues)
-- 安全漏洞：請依[安全政策](SECURITY.md)私下回報，不要公開貼出 API Key、私人貼文或完整平台回應。
-
-## 授權
-
-本專案採用 [MIT License](LICENSE)。
+本專案是獨立開源工具，未受 X、Meta、Threads、Obsidian 或其關係企業贊助、認可或維護。

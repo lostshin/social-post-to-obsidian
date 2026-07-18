@@ -12,7 +12,7 @@ body:
     id: version
     attributes:
       label: 擴充功能版本
-      placeholder: 例如 1.7.0
+      placeholder: 例如 2.2.0
     validations:
       required: true
   - type: dropdown
@@ -23,6 +23,7 @@ body:
         - X
         - Threads
         - Popup／設定
+        - Obsidian／本機 Helper
         - Obsidian／Local REST API
         - 其他
     validations:
@@ -50,4 +51,4 @@ body:
     id: environment
     attributes:
       label: 環境
-      description: Chrome、Obsidian、Local REST API 與作業系統版本。
+      description: Chrome、Obsidian、寫入方式（本機 Helper／REST API）、Helper 或 REST API 版本，以及作業系統版本。

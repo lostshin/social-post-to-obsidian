@@ -5,7 +5,8 @@
 ## 開始前
 
 - 使用目前仍受支援的 Node.js LTS 或 Current 版本。
-- 安裝 Chrome、Obsidian 與 [Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api)。
+- 安裝 Google Chrome 與 Obsidian。
+- macOS 預設使用 Native Helper；從 repository 根目錄執行 `./native/install-host.sh`。其他系統或 REST 相關開發再安裝 [Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api)。
 - Fork repository，從 `main` 建立用途明確的 branch。
 - 不要在 issue、PR、測試資料或 log 中提交 API Key、私人貼文、cookies 或完整平台回應。
 
@@ -13,6 +14,7 @@
 
 - 只加入目前功能需要的最小權限，不使用 `<all_urls>`。
 - 平台回應與使用者內容不得傳送到開發者或第三方伺服器。
+- 不得加入遠端執行程式碼、`eval()`、`new Function()` 或外部 JavaScript。
 - 優先擴充 `tests/media-sync.test.mjs`，避免建立重複測試工具。
 - 程式行為變更必須同步更新 `manifest.json.version`：bug fix bump patch；新功能或可見行為 bump minor。純文件、測試與註解不 bump。
 - 變更 content script 後，必須在 `chrome://extensions/` 重新載入擴充功能，並重新整理所有已開啟的 X／Threads 分頁。
@@ -24,6 +26,7 @@
 ```bash
 node scripts/validate-extension.mjs
 node tests/media-sync.test.mjs
+./scripts/package-extension.sh
 git diff --check
 ```
 
@@ -48,7 +51,8 @@ PR 請保持單一目的，並說明：
 ## 維護者發布流程
 
 1. 確認 `main` 全部驗證通過，且 `manifest.json.version` 是要發布的版本。
-2. 在本機執行 `./scripts/package-extension.sh`，並以解壓縮後的 `dist/social-post-to-obsidian-v*.zip` 做最後一次 Load unpacked 測試。
-3. 建立與 Manifest 一致的 tag，例如 `v1.7.0`，再 push tag。
-4. GitHub Actions 會重跑驗證、建立乾淨 ZIP，並發布 GitHub Release。
-5. 將同一份 ZIP 上傳 Chrome Web Store；欄位與揭露方式見 [`docs/CHROME_WEB_STORE.md`](docs/CHROME_WEB_STORE.md)。
+2. 在本機執行 `./scripts/package-extension.sh`，確認 extension ZIP、macOS Helper ZIP 與 `SHA256SUMS` 都已產生。
+3. 以解壓縮後的 `dist/social-post-to-obsidian-v*.zip` 做最後一次 Load unpacked 測試，並依 [`INSTALL.md`](INSTALL.md) 驗證 Helper 安裝流程。
+4. 建立與 Manifest 一致的 tag，例如 `v2.2.0`，再 push tag。
+5. GitHub Actions 會重跑驗證、建立兩個乾淨 ZIP 與 checksum，並發布 GitHub Release。
+6. 將 extension ZIP 上傳 Chrome Web Store；不要上傳 Helper ZIP。欄位、權限揭露與 reviewer instructions 見 [`docs/CHROME_WEB_STORE.md`](docs/CHROME_WEB_STORE.md)。

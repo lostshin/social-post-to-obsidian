@@ -21,7 +21,7 @@ function loadCommon() {
     chrome: {
       runtime: {
         id: 'test',
-        getManifest: () => ({ version: '2.1.2' }),
+        getManifest: () => ({ version: '2.2.0' }),
         onMessage: { addListener() {} }
       }
     }
@@ -190,7 +190,7 @@ function loadBackground() {
   const chrome = {
     runtime: {
       lastError: null,
-      getManifest: () => ({ version: '2.1.2' }),
+      getManifest: () => ({ version: '2.2.0' }),
       async sendNativeMessage(host, message) {
         assert.equal(host, 'com.lostshin.social_post_to_obsidian');
         nativeMessages.push(message);

@@ -48,12 +48,16 @@ if (!(manifest.permissions || []).includes('nativeMessaging')) {
 if (!/^\d+\.\d+\.\d+$/.test(manifest.version)) {
   fail(`unexpected version format: ${manifest.version}`);
 }
+if (typeof manifest.description !== 'string' || manifest.description.length > 132) {
+  fail('manifest description must be a string no longer than 132 characters');
+}
 
 const referencedFiles = new Set([
   manifest.background?.service_worker,
   manifest.action?.default_popup,
   'native/host.rb',
   'native/install-host.sh',
+  'native/uninstall-host.sh',
   ...Object.values(manifest.icons || {}),
   ...Object.values(manifest.action?.default_icon || {}),
   ...(manifest.content_scripts || []).flatMap((script) => script.js || [])
@@ -94,7 +98,7 @@ for (const [path, expected] of Object.entries(storeAssets)) {
   }
 }
 
-for (const path of ['LICENSE', 'PRIVACY.md', 'SECURITY.md', 'CONTRIBUTING.md']) {
+for (const path of ['INSTALL.md', 'LICENSE', 'PRIVACY.md', 'SECURITY.md', 'CONTRIBUTING.md']) {
   requireFile(path);
 }
 
@@ -112,13 +116,22 @@ const javascriptFiles = [
 ];
 
 for (const path of javascriptFiles) {
+  const source = readFileSync(fromRoot(path), 'utf8');
+  if (/\beval\s*\(|\bnew\s+Function\s*\(/.test(source)) {
+    fail(`${path} must not evaluate string-based code`);
+  }
   execFileSync(process.execPath, ['--check', fromRoot(path).pathname], { stdio: 'inherit' });
 }
+if (/<script\b[^>]*\bsrc=["']https?:/i.test(popupHtml)) {
+  fail('popup must not load remote scripts');
+}
 
-for (const path of ['native/host.rb', 'native/install-host.sh']) {
+for (const path of ['native/host.rb', 'native/install-host.sh', 'native/uninstall-host.sh']) {
   if ((statSync(fromRoot(path)).mode & 0o111) === 0) fail(`${path} must be executable`);
 }
 execFileSync('/usr/bin/ruby', ['-c', fromRoot('native/host.rb').pathname], { stdio: 'inherit' });
-execFileSync('/bin/zsh', ['-n', fromRoot('native/install-host.sh').pathname], { stdio: 'inherit' });
+for (const path of ['native/install-host.sh', 'native/uninstall-host.sh']) {
+  execFileSync('/bin/zsh', ['-n', fromRoot(path).pathname], { stdio: 'inherit' });
+}
 
 console.log(`Validated Manifest V3 extension v${manifest.version}: ${javascriptFiles.length} scripts, ${referencedFiles.size} referenced assets, ${Object.keys(storeAssets).length} store assets.`);

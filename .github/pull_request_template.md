@@ -6,6 +6,7 @@
 
 - [ ] `node scripts/validate-extension.mjs`
 - [ ] `node tests/media-sync.test.mjs`
+- [ ] `./scripts/package-extension.sh`
 - [ ] `git diff --check`
 - [ ] 已完成與變更相稱的 Chrome／Obsidian 手動驗證
 

@@ -16,16 +16,16 @@
 
 ## 現況基線（2026-07-19）
 
-- Manifest `v2.1.2`；Native Helper `v1.1.2`。
+- Manifest `v2.2.0`；Native Helper `v1.1.2`。
 - 預設為 Native Helper 模式，不需要 Obsidian Local REST API Key；REST 模式只保留為相容選項。舊 `storageMode: direct` 會遷移成 `native`。
 - `CLAUDE.md` 中「Local REST API 為唯一資料流」與 `v1.4.0` 是過時現況，不代表要把程式改回去。
 - `v1.6.0–v1.7.0`：X／Threads 圖片同步、Vault 根目錄獨立附件路徑與 Popup 自訂路徑已完成。
 - `v2.0.0`：Native Helper 成為預設寫入方式；Vault 連線不再綁定社群分頁／視窗生命週期，關閉後不必重新授權。
 - `v2.1.0`：Popup 可清除自動草稿、預覽／開啟筆記、刪除貼文及同步 Vault 刪除狀態。
 - `v2.1.2`：iCloud Vault 刪除修復；使用者已確認從「最近儲存」刪除後，Obsidian 筆記與 Popup 項目都會消失。
+- `v2.2.0`：補齊公開安裝／隱私入口、GitHub Release 雙 ZIP 與 Chrome Web Store 上架資料；未改動貼文同步核心。
 - 預設筆記路徑：`個人創作/社群推文`；預設圖片路徑：`附件/Social Post to Obsidian`。
 - `origin/main` 尚未包含上述 Native／Popup 功能；除非獲得明確指示，否則不要 push。
-- README、隱私政策與 Chrome Web Store 文件仍以 REST API／`v1.7.0` 為主，發布前需要另案更新；不要在無授權時順手修改。
 
 ## Native Helper 資料流與限制
 

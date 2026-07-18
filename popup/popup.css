@@ -437,6 +437,25 @@ small {
   line-height: 1.3;
 }
 
+small a,
+.app-footer a {
+  margin-left: 3px;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+small a:hover,
+.app-footer a:hover {
+  text-decoration: underline;
+}
+
+small a:focus-visible,
+.app-footer a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .button-group {
   display: grid;
   grid-template-columns: 0.9fr 1.1fr;
@@ -745,11 +764,17 @@ button:disabled {
   font-size: 9px;
 }
 
-.app-footer span {
+.app-footer .footer-dot {
   width: 5px;
   height: 5px;
+  flex: 0 0 auto;
   border-radius: 50%;
   background: var(--accent);
+}
+
+.app-footer a {
+  padding-left: 7px;
+  border-left: 1px solid var(--line-strong);
 }
 
 @media (prefers-reduced-motion: reduce) {

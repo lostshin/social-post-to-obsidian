@@ -2,6 +2,15 @@
 
 set -euo pipefail
 
+if [[ "$(/usr/bin/uname -s)" != "Darwin" ]]; then
+  print -u2 "The Native Helper installer currently supports macOS only."
+  exit 1
+fi
+if [[ ! -x /usr/bin/ruby ]]; then
+  print -u2 "The Native Helper requires /usr/bin/ruby. Use Local REST API mode on this Mac instead."
+  exit 1
+fi
+
 script_dir="${0:A:h}"
 project_dir="${script_dir:h}"
 extension_id="${1:-}"
