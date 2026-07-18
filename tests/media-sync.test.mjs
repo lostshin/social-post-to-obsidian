@@ -21,7 +21,7 @@ function loadCommon() {
     chrome: {
       runtime: {
         id: 'test',
-        getManifest: () => ({ version: '2.0.0' }),
+        getManifest: () => ({ version: '2.1.0' }),
         onMessage: { addListener() {} }
       }
     }
@@ -56,7 +56,7 @@ try {
   assert.deepEqual(sendNativeHostMessage({ action: 'ping' }, configDirectory), {
     ok: true,
     configured: false,
-    version: '1.0.0'
+    version: '1.1.0'
   });
   assert.equal(sendNativeHostMessage({ action: 'configure', vaultPath }, configDirectory).ok, true);
   assert.equal(sendNativeHostMessage({ action: 'ping' }, configDirectory).vaultName, 'Test Vault');
@@ -68,6 +68,10 @@ try {
     data: '# native'
   }, configDirectory).ok, true);
   assert.equal(readFileSync(join(vaultPath, '個人創作', '社群推文', 'test.md'), 'utf8'), '# native');
+  assert.equal(sendNativeHostMessage({
+    action: 'exists',
+    path: '個人創作/社群推文/test.md'
+  }, configDirectory).exists, true);
 
   assert.equal(sendNativeHostMessage({
     action: 'write',
@@ -102,6 +106,10 @@ try {
     path: '個人創作/社群推文/test.md'
   }, configDirectory).ok, true);
   assert.equal(existsSync(join(vaultPath, '個人創作', '社群推文', 'test.md')), false);
+  assert.equal(sendNativeHostMessage({
+    action: 'exists',
+    path: '個人創作/社群推文/test.md'
+  }, configDirectory).exists, false);
 } finally {
   rmSync(nativeTestRoot, { recursive: true, force: true });
 }
@@ -182,16 +190,21 @@ function loadBackground() {
   const chrome = {
     runtime: {
       lastError: null,
-      getManifest: () => ({ version: '2.0.0' }),
+      getManifest: () => ({ version: '2.1.0' }),
       async sendNativeMessage(host, message) {
         assert.equal(host, 'com.lostshin.social_post_to_obsidian');
         nativeMessages.push(message);
-        if (nativeMode !== 'ok') throw new Error('Specified native messaging host not found');
+        if (nativeMode !== 'ok' && !(nativeMode === 'missing' && message.action === 'exists')) {
+          throw new Error('Specified native messaging host not found');
+        }
         if (message.action === 'ping') {
-          return { ok: true, configured: true, version: '1.0.0', vaultName: 'Test Vault' };
+          return { ok: true, configured: true, version: '1.1.0', vaultName: 'Test Vault' };
         }
         if (message.action === 'chooseVault') {
-          return { ok: true, configured: true, version: '1.0.0', vaultName: 'Chosen Vault' };
+          return { ok: true, configured: true, version: '1.1.0', vaultName: 'Chosen Vault' };
+        }
+        if (message.action === 'exists') {
+          return { ok: true, exists: nativeMode !== 'missing' };
         }
         if (message.action === 'cleanEmptyMediaFolders') return { ok: true, removed: 1 };
         return { ok: true };
@@ -231,6 +244,7 @@ function loadBackground() {
     if (String(url).startsWith('http://127.0.0.1:27123/vault/')) {
       requests.push({ url: String(url), init });
       if (localMode === 'offline') throw new TypeError('Failed to fetch');
+      if (localMode === 'missing' && init.method === 'GET') return new Response(null, { status: 404 });
       return new Response(null, { status: 204 });
     }
     throw new Error(`Unexpected fetch: ${url}`);
@@ -313,6 +327,10 @@ assert.equal(imageOnlyFilename, '2026-07-18_1100_圖片貼文.md');
 assert.equal(background.context.resolveStorageMode({}), 'native');
 assert.equal(background.context.resolveStorageMode({ apiKey: 'legacy-key' }), 'rest');
 assert.equal(background.context.resolveStorageMode({ storageMode: 'direct', apiKey: 'legacy-key' }), 'native');
+assert.equal(background.context.createContentPreview('  第一行\n  第二行  '), '第一行 第二行');
+const emojiPreview = background.context.createContentPreview('😀'.repeat(161));
+assert.equal(Array.from(emojiPreview).length, 161);
+assert.equal(emojiPreview.endsWith('…'), true);
 
 const nativeBackground = loadBackground();
 const nativeSettings = {
@@ -352,12 +370,135 @@ await nativeBackground.context.handleSaveDraft({
 }, null);
 assert.equal(nativeBackground.nativeMessages.at(-1).path, '個人創作/社群推文/_草稿_Twitter.md');
 assert.match(nativeBackground.nativeMessages.at(-1).data, /Helper 暫存草稿/);
+assert.equal(nativeBackground.stored.draftStatus_x.preview, 'Helper 暫存草稿');
 
 await nativeBackground.context.deleteVaultFile('個人創作/社群推文/_草稿_Twitter.md', nativeSettings);
 assert.deepEqual(JSON.parse(JSON.stringify(nativeBackground.nativeMessages.at(-1))), {
   action: 'remove',
   path: '個人創作/社群推文/_草稿_Twitter.md'
 });
+
+const clearBackground = loadBackground();
+clearBackground.stored.storageMode = 'native';
+clearBackground.stored.basePath = '個人創作/社群推文';
+clearBackground.stored.draftStatus_x = {
+  path: '個人創作/社群推文/_草稿_Twitter.md'
+};
+clearBackground.stored.draftStatus_threads = {
+  path: '個人創作/社群推文/_草稿_Threads.md'
+};
+const clearResult = await clearBackground.context.clearAutoDrafts();
+assert.deepEqual(JSON.parse(JSON.stringify(clearResult)), { ok: true, cleared: 2 });
+assert.equal('draftStatus_x' in clearBackground.stored, false);
+assert.equal('draftStatus_threads' in clearBackground.stored, false);
+assert.deepEqual(
+  clearBackground.nativeMessages.filter(message => message.action === 'remove').map(message => message.path),
+  ['個人創作/社群推文/_草稿_Twitter.md', '個人創作/社群推文/_草稿_Threads.md']
+);
+
+clearBackground.stored.draftStatus_x = {
+  path: '個人創作/社群推文/_草稿_Twitter.md'
+};
+clearBackground.setNativeMode('unavailable');
+const failedClear = await clearBackground.context.clearAutoDrafts();
+assert.equal(failedClear.ok, false);
+assert.equal(failedClear.cleared, 0);
+assert.equal('draftStatus_x' in clearBackground.stored, true);
+
+const restClearBackground = loadBackground();
+restClearBackground.stored.storageMode = 'rest';
+restClearBackground.stored.apiKey = 'test-key';
+restClearBackground.stored.port = 27123;
+restClearBackground.stored.draftStatus_threads = {
+  path: '個人創作/社群推文/_草稿_Threads.md'
+};
+const restClearResult = await restClearBackground.context.clearAutoDrafts();
+assert.deepEqual(JSON.parse(JSON.stringify(restClearResult)), { ok: true, cleared: 1 });
+assert.equal(restClearBackground.requests.at(-1).init.method, 'DELETE');
+assert.match(
+  decodeURIComponent(restClearBackground.requests.at(-1).url),
+  /個人創作\/社群推文\/_草稿_Threads\.md$/
+);
+
+const nativeSyncBackground = loadBackground();
+nativeSyncBackground.stored.storageMode = 'native';
+nativeSyncBackground.stored.mediaPath = '附件/Social Post to Obsidian';
+nativeSyncBackground.stored.draftStatus_x = {
+  path: '個人創作/社群推文/_草稿_Twitter.md'
+};
+nativeSyncBackground.stored.recentSaves = [{
+  filename,
+  path,
+  platform: 'x'
+}];
+nativeSyncBackground.setNativeMode('missing');
+const nativeSyncResult = await nativeSyncBackground.context.syncVaultActivity();
+assert.deepEqual(JSON.parse(JSON.stringify(nativeSyncResult)), {
+  ok: true,
+  removedDrafts: 1,
+  removedRecent: 1
+});
+assert.equal('draftStatus_x' in nativeSyncBackground.stored, false);
+assert.deepEqual(JSON.parse(JSON.stringify(nativeSyncBackground.stored.recentSaves)), []);
+assert.equal(
+  nativeSyncBackground.nativeMessages.some(message => message.action === 'cleanEmptyMediaFolders'),
+  true
+);
+
+const offlineSyncBackground = loadBackground();
+offlineSyncBackground.stored.storageMode = 'native';
+offlineSyncBackground.stored.draftStatus_threads = {
+  path: '個人創作/社群推文/_草稿_Threads.md'
+};
+offlineSyncBackground.setNativeMode('unavailable');
+await assert.rejects(() => offlineSyncBackground.context.syncVaultActivity());
+assert.equal('draftStatus_threads' in offlineSyncBackground.stored, true);
+
+const restSyncBackground = loadBackground();
+restSyncBackground.stored.storageMode = 'rest';
+restSyncBackground.stored.apiKey = 'test-key';
+restSyncBackground.stored.port = 27123;
+restSyncBackground.stored.recentSaves = [{ filename, path, platform: 'x' }];
+restSyncBackground.setLocalMode('missing');
+const restSyncResult = await restSyncBackground.context.syncVaultActivity();
+assert.deepEqual(JSON.parse(JSON.stringify(restSyncResult)), {
+  ok: true,
+  removedDrafts: 0,
+  removedRecent: 1
+});
+assert.deepEqual(JSON.parse(JSON.stringify(restSyncBackground.stored.recentSaves)), []);
+assert.equal(restSyncBackground.requests.at(-1).init.method, 'GET');
+
+const deleteActivityBackground = loadBackground();
+deleteActivityBackground.stored.storageMode = 'native';
+deleteActivityBackground.stored.mediaPath = '附件/Social Post to Obsidian';
+deleteActivityBackground.stored.recentSaves = [{ filename, path, platform: 'x' }];
+const deleteActivityResult = await deleteActivityBackground.context.deleteVaultActivity({
+  kind: 'recent',
+  path
+});
+assert.deepEqual(JSON.parse(JSON.stringify(deleteActivityResult)), { ok: true });
+assert.deepEqual(JSON.parse(JSON.stringify(deleteActivityBackground.stored.recentSaves)), []);
+assert.deepEqual(JSON.parse(JSON.stringify(
+  deleteActivityBackground.nativeMessages.find(message => message.action === 'remove')
+)), { action: 'remove', path });
+
+await assert.rejects(
+  () => deleteActivityBackground.context.deleteVaultActivity({
+    kind: 'recent',
+    path: '個人創作/社群推文/未受追蹤.md'
+  }),
+  /找不到要刪除的 Vault 貼文/
+);
+
+const restDeleteActivityBackground = loadBackground();
+restDeleteActivityBackground.stored.storageMode = 'rest';
+restDeleteActivityBackground.stored.apiKey = 'test-key';
+restDeleteActivityBackground.stored.port = 27123;
+restDeleteActivityBackground.stored.recentSaves = [{ filename, path, platform: 'x' }];
+await restDeleteActivityBackground.context.deleteVaultActivity({ kind: 'recent', path });
+assert.deepEqual(JSON.parse(JSON.stringify(restDeleteActivityBackground.stored.recentSaves)), []);
+assert.equal(restDeleteActivityBackground.requests.at(-1).init.method, 'DELETE');
 
 nativeBackground.setNativeMode('unavailable');
 await nativeBackground.context.saveWithQueueFallback(
@@ -376,6 +517,7 @@ nativeBackground.setNativeMode('ok');
 await nativeBackground.context.retryOfflineQueue();
 assert.deepEqual(JSON.parse(JSON.stringify(nativeBackground.stored.offlineQueue)), []);
 assert.equal(nativeBackground.stored.recentSaves[0].filename, filename);
+assert.equal(nativeBackground.stored.recentSaves[0].preview, '圖片同步測試');
 
 background.stored.storageMode = 'rest';
 background.setLocalMode('offline');
@@ -397,6 +539,7 @@ background.setLocalMode('ok');
 await background.context.retryOfflineQueue();
 assert.deepEqual(JSON.parse(JSON.stringify(background.stored.offlineQueue)), []);
 assert.equal(background.stored.recentSaves[0].filename, filename);
+assert.equal(background.stored.recentSaves[0].preview, '圖片同步測試');
 assert.match(
   decodeURIComponent(background.requests.at(-2).url),
   /附件\/Social Post to Obsidian\/2026-07-18_1100_圖片同步測試\/image-01\.jpg$/

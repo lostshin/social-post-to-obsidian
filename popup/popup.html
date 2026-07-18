@@ -29,6 +29,7 @@
       </section>
 
       <div id="queueInfo" class="queue-info" role="status" hidden></div>
+      <div id="actionStatus" class="status global-status" role="status" aria-live="polite"></div>
 
       <details id="settingsPanel" class="settings-section" open>
         <summary class="section-heading">
@@ -109,7 +110,10 @@
       <section id="draftSection" class="activity-section" aria-labelledby="draftTitle" hidden>
         <div class="activity-heading">
           <h2 id="draftTitle">未發佈草稿</h2>
-          <span class="live-label">自動暫存</span>
+          <div class="draft-heading-actions">
+            <span class="live-label">自動暫存</span>
+            <button type="button" id="clearDraftsBtn" class="clear-drafts-btn">清除全部</button>
+          </div>
         </div>
         <ul id="draftList" class="activity-list"></ul>
       </section>
@@ -127,6 +131,11 @@
       <span aria-hidden="true"></span>
       發佈後自動備份至你的 Vault
     </footer>
+  </div>
+
+  <div id="previewPopover" class="preview-popover" role="tooltip" hidden>
+    <span>內容預覽</span>
+    <p id="previewText"></p>
   </div>
 
   <script src="popup.js"></script>

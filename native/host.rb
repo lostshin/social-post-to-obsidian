@@ -6,7 +6,7 @@ require 'json'
 require 'open3'
 require 'securerandom'
 
-HOST_VERSION = '1.0.0'
+HOST_VERSION = '1.1.0'
 MAX_MESSAGE_BYTES = 64 * 1024 * 1024
 APP_DIRECTORY = ENV.fetch(
   'SP2O_CONFIG_DIR',
@@ -179,6 +179,10 @@ def handle_message(message)
     target = resolve_target(vault, message['path'])
     File.delete(target) if target && File.file?(target)
     { 'ok' => true }
+  when 'exists'
+    vault = configured_vault
+    target = resolve_target(vault, message['path'])
+    { 'ok' => true, 'exists' => !target.nil? && File.file?(target) }
   when 'cleanEmptyMediaFolders'
     vault = configured_vault
     media_root = resolve_directory(vault, message.fetch('path'))

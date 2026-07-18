@@ -16,9 +16,15 @@ const statusDiv = document.getElementById('status');
 const connDot = document.getElementById('connDot');
 const connText = document.getElementById('connText');
 const queueInfo = document.getElementById('queueInfo');
+const actionStatus = document.getElementById('actionStatus');
 const draftSection = document.getElementById('draftSection');
 const draftList = document.getElementById('draftList');
+const clearDraftsBtn = document.getElementById('clearDraftsBtn');
 const recentList = document.getElementById('recentList');
+const previewPopover = document.getElementById('previewPopover');
+const previewText = document.getElementById('previewText');
+let actionStatusTimer;
+let activePreviewAnchor;
 
 function readPort() {
   const enteredPort = Number.parseInt(portInput.value, 10);
@@ -208,6 +214,15 @@ function showStatus(message, type) {
   statusDiv.className = `status ${type}`;
 }
 
+function showActionStatus(message, type) {
+  clearTimeout(actionStatusTimer);
+  actionStatus.textContent = message;
+  actionStatus.className = `status global-status ${type}`;
+  actionStatusTimer = setTimeout(() => {
+    actionStatus.className = 'status global-status';
+  }, 3500);
+}
+
 // 開啟 popup 時自動檢查連線狀態
 async function checkConnection() {
   const settings = await chrome.storage.local.get(['storageMode', 'apiKey', 'port', 'vaultName']);
@@ -274,24 +289,86 @@ function formatTime(iso) {
   return `${pad(t.getMonth() + 1)}/${pad(t.getDate())} ${pad(t.getHours())}:${pad(t.getMinutes())}`;
 }
 
-// 建立一列清單項目：可點開 Obsidian 的檔名 + 說明文字
-function buildListItem(filename, path, metaText) {
+function fallbackPreview(filename) {
+  return filename
+    .replace(/^\d{4}-\d{2}-\d{2}_\d{4}_/, '')
+    .replace(/^_草稿_/, '')
+    .replace(/\.md$/i, '')
+    .replace(/_/g, ' ')
+    .trim() || '目前沒有可顯示的文字內容';
+}
+
+function showPreview(anchor, text) {
+  activePreviewAnchor?.removeAttribute('aria-describedby');
+  activePreviewAnchor = anchor;
+  previewText.textContent = text;
+  previewPopover.hidden = false;
+  anchor.setAttribute('aria-describedby', 'previewPopover');
+
+  const itemRect = anchor.closest('li').getBoundingClientRect();
+  const width = Math.min(320, window.innerWidth - 24);
+  previewPopover.style.width = `${width}px`;
+  const left = Math.max(12, Math.min(itemRect.left, window.innerWidth - width - 12));
+  const popoverHeight = previewPopover.offsetHeight;
+  const below = itemRect.bottom + 7;
+  const top = below + popoverHeight <= window.innerHeight - 12
+    ? below
+    : Math.max(12, itemRect.top - popoverHeight - 7);
+  previewPopover.style.left = `${left}px`;
+  previewPopover.style.top = `${top}px`;
+}
+
+function hidePreview(anchor) {
+  previewPopover.hidden = true;
+  const target = anchor || activePreviewAnchor;
+  target?.removeAttribute('aria-describedby');
+  if (!anchor || anchor === activePreviewAnchor) activePreviewAnchor = null;
+}
+
+// 建立一列清單項目：箭頭開啟 Obsidian，hover/focus 顯示內容摘要
+function buildListItem(filename, path, metaText, preview, kind) {
   const li = document.createElement('li');
 
   const link = document.createElement('a');
+  link.className = 'activity-open-link';
   link.href = '#';
-  link.textContent = filename;
-  link.title = '在 Obsidian 中開啟';
-  link.addEventListener('click', (e) => {
-    e.preventDefault();
-    chrome.tabs.create({ url: 'obsidian://open?file=' + encodeURIComponent(path) });
-  });
+  link.setAttribute('aria-label', `在 Obsidian 中開啟 ${filename}`);
+
+  const copy = document.createElement('span');
+  copy.className = 'activity-copy';
+
+  const name = document.createElement('span');
+  name.className = 'activity-filename';
+  name.textContent = filename;
 
   const meta = document.createElement('small');
   meta.textContent = metaText;
 
+  const openIcon = document.createElement('span');
+  openIcon.className = 'activity-open-icon';
+  openIcon.setAttribute('aria-hidden', 'true');
+  openIcon.textContent = '↗';
+
+  copy.append(name, meta);
+  link.append(copy, openIcon);
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    chrome.tabs.create({ url: 'obsidian://open?file=' + encodeURIComponent(path) });
+  });
+  const previewContent = preview || fallbackPreview(filename);
+  li.addEventListener('mouseenter', () => showPreview(link, previewContent));
+  li.addEventListener('mouseleave', () => hidePreview(link));
+  link.addEventListener('focus', () => showPreview(link, previewContent));
+  link.addEventListener('blur', () => hidePreview(link));
   li.appendChild(link);
-  li.appendChild(meta);
+
+  const deleteButton = document.createElement('button');
+  deleteButton.type = 'button';
+  deleteButton.className = 'activity-delete-btn';
+  deleteButton.textContent = '刪';
+  deleteButton.setAttribute('aria-label', `刪除 ${filename}`);
+  deleteButton.addEventListener('click', () => deleteActivityItem(deleteButton, kind, filename, path));
+  li.appendChild(deleteButton);
   return li;
 }
 
@@ -300,6 +377,32 @@ function buildEmptyState(message) {
   li.className = 'empty-state';
   li.textContent = message;
   return li;
+}
+
+async function deleteActivityItem(button, kind, filename, path) {
+  if (kind === 'recent' && !window.confirm(
+    `確定要從 Obsidian 刪除「${filename}」？\n\n社群平台上的原貼文不會被刪除。`
+  )) return;
+
+  button.disabled = true;
+  hidePreview();
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'DELETE_VAULT_ACTIVITY',
+      kind,
+      path
+    });
+    if (!response?.ok) {
+      showActionStatus(response?.error || 'Vault 貼文刪除失敗', 'error');
+      return;
+    }
+    showActionStatus(`已從 Obsidian 刪除 · ${filename}`, 'success');
+    await Promise.all([renderDrafts(), renderRecent()]);
+  } catch (error) {
+    showActionStatus(`Vault 貼文刪除失敗 · ${error.message}`, 'error');
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // 顯示未發佈草稿（打字中自動暫存的內容）
@@ -314,7 +417,50 @@ async function renderDrafts() {
   draftList.textContent = '';
 
   for (const [platformName, d] of drafts) {
-    draftList.appendChild(buildListItem(d.filename, d.path, `${platformName} · 最後暫存 ${formatTime(d.savedAt)}`));
+    draftList.appendChild(buildListItem(
+      d.filename,
+      d.path,
+      `${platformName} · 最後暫存 ${formatTime(d.savedAt)}`,
+      d.preview,
+      'draft'
+    ));
+  }
+}
+
+async function clearAutoDrafts() {
+  clearDraftsBtn.disabled = true;
+  clearDraftsBtn.textContent = '清除中…';
+  hidePreview();
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'CLEAR_AUTO_DRAFTS' });
+    if (!response?.ok) {
+      const partial = response?.cleared > 0 ? `已清除 ${response.cleared} 則；` : '';
+      showActionStatus(`${partial}${response?.error || '草稿清除失敗'}`, 'error');
+      return;
+    }
+    showActionStatus(response.cleared > 0 ? `已清除 ${response.cleared} 則自動暫存` : '目前沒有自動暫存', 'success');
+    await renderDrafts();
+  } catch (error) {
+    showActionStatus(`草稿清除失敗 · ${error.message}`, 'error');
+  } finally {
+    clearDraftsBtn.disabled = false;
+    clearDraftsBtn.textContent = '清除全部';
+  }
+}
+
+async function syncVaultActivity() {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'SYNC_VAULT_ACTIVITY' });
+    if (!response?.ok) {
+      showActionStatus(`Vault 狀態同步失敗 · ${response?.error || '背景程序沒有回應'}`, 'error');
+      return;
+    }
+    const removed = (response.removedDrafts || 0) + (response.removedRecent || 0);
+    if (removed > 0) {
+      showActionStatus(`已同步 Obsidian 的刪除狀態 · ${removed} 則`, 'success');
+    }
+  } catch (error) {
+    showActionStatus(`Vault 狀態同步失敗 · ${error.message}`, 'error');
   }
 }
 
@@ -330,7 +476,13 @@ async function renderRecent() {
 
   for (const item of recentSaves) {
     const platformName = item.platform === 'x' ? 'Twitter/X' : 'Threads';
-    recentList.appendChild(buildListItem(item.filename, item.path, `${platformName} · ${formatTime(item.savedAt)}`));
+    recentList.appendChild(buildListItem(
+      item.filename,
+      item.path,
+      `${platformName} · ${formatTime(item.savedAt)}`,
+      item.preview,
+      'recent'
+    ));
   }
 }
 
@@ -360,13 +512,20 @@ settingsForm.addEventListener('submit', (event) => {
 testBtn.addEventListener('click', testConnection);
 toggleApiKey.addEventListener('click', toggleApiKeyVisibility);
 chooseVaultBtn.addEventListener('click', chooseVault);
+clearDraftsBtn.addEventListener('click', clearAutoDrafts);
 storageModeSelect.addEventListener('change', updateModeUI);
+document.addEventListener('scroll', () => hidePreview(), true);
+window.addEventListener('focus', async () => {
+  await syncVaultActivity();
+  await Promise.all([renderDrafts(), renderRecent()]);
+});
 
 // 初始化
 async function initialize() {
   document.getElementById('version').textContent = 'v' + chrome.runtime.getManifest().version;
   await loadSettings();
   await checkConnection();
+  await syncVaultActivity();
   await Promise.all([renderQueueInfo(), renderDrafts(), renderRecent()]);
 }
 

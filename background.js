@@ -35,6 +35,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         (error) => sendResponse({ ok: false, error: error.message })
       );
       return true;
+    case 'CLEAR_AUTO_DRAFTS':
+      clearAutoDrafts().then(
+        (response) => sendResponse(response),
+        (error) => sendResponse({ ok: false, cleared: 0, error: error.message })
+      );
+      return true;
+    case 'SYNC_VAULT_ACTIVITY':
+      syncVaultActivity().then(
+        (response) => sendResponse(response),
+        (error) => sendResponse({ ok: false, error: error.message })
+      );
+      return true;
+    case 'DELETE_VAULT_ACTIVITY':
+      deleteVaultActivity(message).then(
+        (response) => sendResponse(response),
+        (error) => sendResponse({ ok: false, error: error.message })
+      );
+      return true;
   }
 
   // 同步回應，避免 content script 因 port closed 錯誤而重送訊息
@@ -112,7 +130,12 @@ async function handleSaveDraft(data, tabId) {
 
     // 記錄草稿狀態供 popup 顯示（每平台一個 key，避免共用物件的讀寫競態）
     await chrome.storage.local.set({
-      ['draftStatus_' + data.platform]: { filename, path: fullPath, savedAt: data.timestamp }
+      ['draftStatus_' + data.platform]: {
+        filename,
+        path: fullPath,
+        savedAt: data.timestamp,
+        preview: createPostPreview(data)
+      }
     });
   } catch (error) {
     // 草稿失敗不跳系統通知（打字中會很吵）；正式貼文有離線佇列保底
@@ -187,7 +210,13 @@ async function saveWithQueueFallback(fullPath, filename, data, settings, tabId) 
     throw error;
   }
 
-  await recordRecentSave({ filename, path: fullPath, platform: data.platform, url: data.url });
+  await recordRecentSave({
+    filename,
+    path: fullPath,
+    platform: data.platform,
+    url: data.url,
+    preview: createPostPreview(data)
+  });
   const mediaText = result.failedMedia > 0
     ? `（${result.failedMedia} 張圖片未同步）`
     : result.savedMedia > 0 ? `（${result.savedMedia} 張圖片）` : '';
@@ -308,8 +337,7 @@ async function downloadImage(url) {
   };
 }
 
-// 刪除草稿檔案
-async function deleteDraft(filepath, apiKey, port) {
+async function deleteRestVaultFile(filepath, apiKey, port, strict = false) {
   const url = `${apiBase(port)}/vault/${encodeURIComponent(filepath)}`;
 
   try {
@@ -319,26 +347,162 @@ async function deleteDraft(filepath, apiKey, port) {
     });
     // 404（草稿不存在）也沒關係，其他錯誤記下來
     if (!response.ok && response.status !== 404) {
-      console.warn('[Social Post to Obsidian] Draft delete failed:', response.status);
+      if (strict) throw new Error(`刪除 Vault 檔案失敗：HTTP ${response.status}`);
+      console.warn('[Social Post to Obsidian] Vault file delete failed:', response.status);
     } else {
-      console.log('[Social Post to Obsidian] Draft deleted:', filepath);
+      console.log('[Social Post to Obsidian] Vault file deleted:', filepath);
     }
   } catch (error) {
-    console.log('[Social Post to Obsidian] Draft delete skipped:', error.message);
+    if (strict) throw error;
+    console.log('[Social Post to Obsidian] Vault file delete skipped:', error.message);
   }
 }
 
-async function deleteVaultFile(filepath, settings) {
+async function deleteVaultFile(filepath, settings, strict = false) {
   if (resolveStorageMode(settings) === 'native') {
     try {
       await sendNativeRequest({ action: 'remove', path: filepath });
-      console.log('[Social Post to Obsidian] Draft deleted:', filepath);
+      console.log('[Social Post to Obsidian] Vault file deleted:', filepath);
     } catch (error) {
-      console.log('[Social Post to Obsidian] Draft delete skipped:', error.message);
+      if (strict) throw error;
+      console.log('[Social Post to Obsidian] Vault file delete skipped:', error.message);
     }
     return;
   }
-  await deleteDraft(filepath, settings.apiKey, settings.port || 27123);
+  await deleteRestVaultFile(filepath, settings.apiKey, settings.port || 27123, strict);
+}
+
+async function clearAutoDrafts() {
+  const settings = await getStorageSettings();
+  const basePath = settings.basePath || '個人創作/社群推文';
+  const stored = await chrome.storage.local.get(['draftStatus_x', 'draftStatus_threads']);
+  const drafts = [
+    { key: 'draftStatus_x', filename: '_草稿_Twitter.md' },
+    { key: 'draftStatus_threads', filename: '_草稿_Threads.md' }
+  ].filter(({ key }) => stored[key]);
+  const errors = [];
+  let cleared = 0;
+
+  for (const draft of drafts) {
+    try {
+      await deleteVaultFile(stored[draft.key].path || `${basePath}/${draft.filename}`, settings, true);
+      await chrome.storage.local.remove(draft.key);
+      cleared++;
+    } catch (error) {
+      errors.push(error.message);
+    }
+  }
+
+  return {
+    ok: errors.length === 0,
+    cleared,
+    error: errors.length > 0 ? errors.join('；') : undefined
+  };
+}
+
+async function vaultFileExists(filepath, settings) {
+  if (resolveStorageMode(settings) === 'native') {
+    const response = await sendNativeRequest({ action: 'exists', path: filepath });
+    return response.exists === true;
+  }
+
+  let response;
+  try {
+    response = await fetch(`${apiBase(settings.port || 27123)}/vault/${encodeURIComponent(filepath)}`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${settings.apiKey}` }
+    });
+  } catch (error) {
+    error.isObsidianConnectionError = true;
+    throw error;
+  }
+  if (response.status === 404) return false;
+  if (!response.ok) throw new Error(`同步 Vault 狀態失敗：HTTP ${response.status}`);
+  return true;
+}
+
+async function syncVaultActivity() {
+  const settings = await getStorageSettings();
+  if (resolveStorageMode(settings) === 'rest' && !settings.apiKey) {
+    return { ok: false, error: '尚未設定 API Key' };
+  }
+
+  const stored = await chrome.storage.local.get([
+    'draftStatus_x',
+    'draftStatus_threads',
+    'recentSaves'
+  ]);
+  const draftEntries = [
+    ['draftStatus_x', stored.draftStatus_x],
+    ['draftStatus_threads', stored.draftStatus_threads]
+  ];
+  const existence = new Map();
+
+  async function exists(filepath) {
+    if (!filepath) return true;
+    if (!existence.has(filepath)) {
+      existence.set(filepath, vaultFileExists(filepath, settings));
+    }
+    return existence.get(filepath);
+  }
+
+  let removedDrafts = 0;
+  for (const [key, draft] of draftEntries) {
+    if (!draft || await exists(draft.path)) continue;
+    await chrome.storage.local.remove(key);
+    removedDrafts++;
+  }
+
+  const recentSaves = stored.recentSaves || [];
+  const existingRecentSaves = [];
+  for (const item of recentSaves) {
+    if (await exists(item.path)) existingRecentSaves.push(item);
+  }
+  const removedRecent = recentSaves.length - existingRecentSaves.length;
+  if (removedRecent > 0) {
+    await chrome.storage.local.set({ recentSaves: existingRecentSaves });
+    await cleanupEmptyMediaFolders(settings);
+  }
+
+  return { ok: true, removedDrafts, removedRecent };
+}
+
+async function deleteVaultActivity(message) {
+  const settings = await getStorageSettings();
+  const stored = await chrome.storage.local.get([
+    'draftStatus_x',
+    'draftStatus_threads',
+    'recentSaves'
+  ]);
+  let target;
+
+  if (message.kind === 'draft') {
+    const draftEntries = [
+      ['draftStatus_x', stored.draftStatus_x],
+      ['draftStatus_threads', stored.draftStatus_threads]
+    ];
+    const matched = draftEntries.find(([, draft]) => draft?.path === message.path);
+    if (matched) target = { key: matched[0], path: matched[1].path };
+  } else if (message.kind === 'recent') {
+    const recentSaves = stored.recentSaves || [];
+    if (recentSaves.some(item => item.path === message.path)) {
+      target = { path: message.path, recentSaves };
+    }
+  }
+
+  if (!target) throw new Error('找不到要刪除的 Vault 貼文');
+  await deleteVaultFile(target.path, settings, true);
+
+  if (target.key) {
+    await chrome.storage.local.remove(target.key);
+  } else {
+    await chrome.storage.local.set({
+      recentSaves: target.recentSaves.filter(item => item.path !== target.path)
+    });
+    await cleanupEmptyMediaFolders(settings);
+  }
+
+  return { ok: true };
 }
 
 // 處理貼文存檔（舊版相容）
@@ -427,7 +591,13 @@ async function retryOfflineQueue() {
         // Queue entries created before v1.6 only contain rendered Markdown.
         await saveVaultFile(item.markdown, item.path, settings, 'text/markdown');
       }
-      await recordRecentSave({ filename: item.filename, path: item.path, platform: item.platform, url: item.url });
+      await recordRecentSave({
+        filename: item.filename,
+        path: item.path,
+        platform: item.platform,
+        url: item.url,
+        preview: item.data ? createPostPreview(item.data) : createContentPreview(item.markdown)
+      });
       saved++;
     } catch (error) {
       remaining.push(item);
@@ -469,6 +639,20 @@ async function recordRecentSave(entry) {
   const recentSaves = stored.recentSaves || [];
   recentSaves.unshift({ ...entry, savedAt: new Date().toISOString() });
   await chrome.storage.local.set({ recentSaves: recentSaves.slice(0, 5) });
+}
+
+function createContentPreview(content, maxLength = 160) {
+  const normalized = String(content || '').replace(/\s+/g, ' ').trim();
+  const characters = Array.from(normalized);
+  if (characters.length <= maxLength) return normalized;
+  return characters.slice(0, maxLength).join('') + '…';
+}
+
+function createPostPreview(data) {
+  const text = createContentPreview(data?.content);
+  if (text) return text;
+  const mediaCount = Array.isArray(data?.media) ? data.media.length : 0;
+  return mediaCount > 0 ? `圖片貼文 · ${mediaCount} 張圖片` : '沒有文字內容';
 }
 
 // 回報存檔結果：優先在原分頁顯示 toast，分頁不在了才用系統通知
