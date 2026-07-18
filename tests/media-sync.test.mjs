@@ -519,8 +519,8 @@ assert.deepEqual(parseYamlFrontmatter(draftMarkdown), {
   tags: ['社群草稿', 'Threads', '串文']
 });
 assert.match(draftMarkdown, /> \[!warning\] 未發佈草稿/);
-assert.match(draftMarkdown, /## 串文草稿\n\n### 1 \/ 2\n\nThreads 第一則/);
-assert.match(draftMarkdown, /### 2 \/ 2\n\nThreads 第二則/);
+assert.match(draftMarkdown, /## 串文草稿\n\n### 1 \/ 2\n\n```\nThreads 第一則\n```/);
+assert.match(draftMarkdown, /### 2 \/ 2\n\n```\nThreads 第二則\n```/);
 
 const formattedThreadMarkdown = background.context.generateMarkdown({
   content: '串文第一則\n\n---\n\n串文第二則',
@@ -552,9 +552,22 @@ assert.deepEqual(parseYamlFrontmatter(formattedThreadMarkdown), {
   summary: ''
 });
 assert.match(formattedThreadMarkdown, /> \[!info\] 貼文資訊/);
-assert.match(formattedThreadMarkdown, /## 串文內容\n\n### 1 \/ 2\n\n串文第一則/);
-assert.match(formattedThreadMarkdown, /### 2 \/ 2\n\n串文第二則/);
+assert.match(formattedThreadMarkdown, /## 串文內容\n\n### 1 \/ 2\n\n```\n串文第一則\n```/);
+assert.match(formattedThreadMarkdown, /### 2 \/ 2\n\n```\n串文第二則\n```/);
 assert.match(formattedThreadMarkdown, /> \[!quote\] 引用貼文/);
+
+const singlePostMarkdown = background.context.generateMarkdown(postData);
+assert.match(singlePostMarkdown, /## 貼文內容\n\n```\n圖片同步測試\n```/);
+
+// 原文若含三個反引號，外層 fence 必須自動加長，避免提早結束 code block。
+const nestedFenceMarkdown = background.context.generateMarkdown({
+  ...postData,
+  content: '貼文內有 code fence\n```\nconst ok = true;\n```'
+});
+assert.match(
+  nestedFenceMarkdown,
+  /## 貼文內容\n\n````\n貼文內有 code fence\n```\nconst ok = true;\n```\n````/
+);
 
 // 用實際 Native Host 寫入隔離 Vault，再從磁碟讀回並解析 YAML。
 const markdownVaultRoot = mkdtempSync(join(tmpdir(), 'sp2o-markdown-test-'));

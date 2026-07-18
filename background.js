@@ -687,15 +687,23 @@ function getThreadItems(data) {
     .filter(Boolean);
 }
 
+function renderCopyableContent(content) {
+  const text = String(content || '');
+  const fenceLength = (text.match(/`+/g) || [])
+    .reduce((length, run) => Math.max(length, run.length + 1), 3);
+  const fence = '`'.repeat(fenceLength);
+  return `${fence}\n${text}\n${fence}`;
+}
+
 function renderContentSection(data, singleHeading, threadHeading) {
   const threadItems = getThreadItems(data);
   if (threadItems.length > 1) {
     const posts = threadItems.map((item, index) => (
-      `### ${index + 1} / ${threadItems.length}\n\n${item}`
+      `### ${index + 1} / ${threadItems.length}\n\n${renderCopyableContent(item)}`
     ));
     return `## ${threadHeading}\n\n${posts.join('\n\n---\n\n')}`;
   }
-  return `## ${singleHeading}\n\n${data.content || ''}`;
+  return `## ${singleHeading}\n\n${renderCopyableContent(data.content)}`;
 }
 
 function markdownLinkTarget(target) {
