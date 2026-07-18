@@ -6,7 +6,7 @@ require 'json'
 require 'open3'
 require 'securerandom'
 
-HOST_VERSION = '1.1.1'
+HOST_VERSION = '1.1.2'
 MAX_MESSAGE_BYTES = 64 * 1024 * 1024
 APP_DIRECTORY = ENV.fetch(
   'SP2O_CONFIG_DIR',
@@ -141,9 +141,8 @@ end
 def move_to_trash(path)
   script = <<~APPLESCRIPT
     on run argv
-      tell application "Finder"
-        delete (POSIX file (item 1 of argv))
-      end tell
+      set targetFile to POSIX file (item 1 of argv) as alias
+      tell application "Finder" to delete targetFile
     end run
   APPLESCRIPT
   _output, error, status = Open3.capture3('/usr/bin/osascript', '-e', script, path)
