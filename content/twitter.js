@@ -1,15 +1,8 @@
-// Twitter/X 平台擷取器
+// Twitter/X 平台擷取器：DOM 擷取與按鈕偵測；發佈/草稿流程共用 SP2O.createPublishPipeline
 (function () {
   'use strict';
 
-  const PLATFORM = 'x';
   const LOG = '[Social Post to Obsidian]';
-  const DEBOUNCE_DELAY = 1500;   // 草稿 debounce（毫秒）
-  const API_WAIT_TIMEOUT = 8000; // 等待發文 API 回應的時限（毫秒）
-  const THREAD_WINDOW = 15000;   // 串文後續 API 回應的忽略時窗（毫秒）
-
-  // Debounce timer
-  let debounceTimer = null;
 
   // 檢查是否是最終的發文按鈕
   function isPostButton(element) {
@@ -45,8 +38,9 @@
 
   // 取得輸入框的文字內容（支援串文多則）
   function getTextContent() {
-    // 選擇所有推文編輯器（串文會有多個：_0, _1, _2...）
-    const inputs = document.querySelectorAll('[data-testid^="tweetTextarea_"]');
+    // 有發文 dialog 時限定在 dialog 內找，避免同時抓到時間軸上的內嵌輸入框
+    const scope = document.querySelector('[role="dialog"]') || document;
+    const inputs = scope.querySelectorAll('[data-testid^="tweetTextarea_"]');
 
     if (!inputs || inputs.length === 0) {
       console.log(LOG, 'Twitter: 找不到輸入框');
@@ -54,9 +48,14 @@
     }
 
     const texts = [];
-    const seen = new Set(); // 用來去重複
+    // 同一個編輯器可能在 DOM 出現兩份，用 data-testid 去重；
+    // 不能用文字內容去重：串文中兩則相同文字（如都是 emoji）會被誤刪一則
+    const seenEditors = new Set();
 
     inputs.forEach((input) => {
+      const editorId = input.getAttribute('data-testid') || '';
+      if (seenEditors.has(editorId)) return;
+
       let text = '';
       if (input.innerText) {
         text = input.innerText.trim();
@@ -71,8 +70,8 @@
       }
       const isPlaceholder = text === '有什麼新鮮事？' || text === "What's happening?" || text === '';
 
-      if (text && !isPlaceholder && text !== '\n' && !seen.has(text)) {
-        seen.add(text);
+      if (text && !isPlaceholder && text !== '\n') {
+        seenEditors.add(editorId);
         texts.push(text);
       }
     });
@@ -125,142 +124,14 @@
     return { author: authorHandle, authorName: authorName, content: content, url: url };
   }
 
-  // ===== 發佈流程：點擊時擷取內容 → 等發文 API 回應補上正確資料 → 送 background =====
-
-  // 待送出的貼文
-  let pendingPost = null;
-  let pendingTimer = null;
-  let lastFlushAt = 0;
-
-  // 發送貼文內容到 background（發佈時）
-  function sendPost(content) {
-    if (!content || content.trim() === '') {
-      console.log(LOG, 'Twitter: 貼文內容為空，跳過');
-      return;
-    }
-
-    // 清除待執行的草稿 debounce
-    clearTimeout(debounceTimer);
-
-    pendingPost = {
-      content: content.trim(),
-      quoted: getQuotedTweet(),
-      timestamp: new Date().toISOString()
-    };
-    console.log(LOG, 'Twitter: 已擷取貼文內容，等待發文 API 回應...');
-
-    // 備援：時限內沒攔截到發文 API 回應，就用 DOM 資料直接送出
-    clearTimeout(pendingTimer);
-    pendingTimer = setTimeout(() => {
-      console.log(LOG, 'Twitter: 未攔截到 API 回應，使用備援資料送出');
-      flushPending(null);
-    }, API_WAIT_TIMEOUT);
-  }
-
-  // 組合 DOM 擷取內容與 API 回應，送出到 background
-  function flushPending(api) {
-    if (!pendingPost && !api) return;
-
-    const base = pendingPost || { content: '', quoted: null, timestamp: new Date().toISOString() };
-    const data = {
-      // DOM 擷取的內容保留使用者輸入原文；沒有時用 API 回傳的正式文字
-      content: base.content || (api ? api.text : ''),
-      platform: PLATFORM,
-      url: api ? api.url : window.location.href,
-      timestamp: base.timestamp
-    };
-
-    const quoted = (api && api.quoted) || base.quoted;
-    if (quoted) data.quoted = quoted;
-    if (api && api.replyTo) data.replyTo = api.replyTo;
-    if (api && api.media?.length) data.media = api.media;
-
-    pendingPost = null;
-    clearTimeout(pendingTimer);
-
-    if (!data.content && !data.media?.length) return;
-    lastFlushAt = Date.now();
-
-    SP2O.sendMessage({ type: 'PUBLISH_DRAFT', data: data });
-    console.log(LOG, 'Twitter: 已發送貼文內容', data.url);
-  }
-
-  // 攔截發文 API 回應：發佈成功當下即取得正確 URL、引用與回覆資訊
-  SP2O.onIntercept(PLATFORM, (msg) => {
-    const api = SP2O.parseCreateTweet(msg.responseText);
-    if (!api) return;
-
-    // 串文會連續回傳多則（第 2 則起是接續回覆），只用第一則建檔
-    if (!pendingPost && Date.now() - lastFlushAt < THREAD_WINDOW) {
-      console.log(LOG, 'Twitter: 忽略串文後續回應', api.url);
-      return;
-    }
-
-    console.log(LOG, 'Twitter: 攔截到發文 API 回應', api.url);
-    flushPending(api);
+  const pipeline = SP2O.createPublishPipeline({
+    platform: 'x',
+    label: 'Twitter',
+    parseResponse: SP2O.parseCreateTweet,
+    getTextContent: getTextContent,
+    getQuoted: getQuotedTweet,
+    getDraftInputs: () => document.querySelectorAll('[data-testid^="tweetTextarea_"]')
   });
-
-  // ===== 草稿 =====
-
-  // 發送草稿到 background
-  function sendDraft(content) {
-    if (!content || content.trim() === '') return;
-
-    SP2O.sendMessage({
-      type: 'SAVE_DRAFT',
-      data: {
-        content: content.trim(),
-        platform: PLATFORM,
-        timestamp: new Date().toISOString()
-      }
-    });
-
-    console.log(LOG, 'Twitter: 已發送草稿');
-  }
-
-  // 設定草稿自動存檔監聽
-  function setupDraftListener() {
-    // 記錄已附加監聽器的輸入框
-    const attachedInputs = new WeakSet();
-
-    // 使用 MutationObserver 監聽 DOM 變化（輸入框是動態產生的）
-    const observer = new MutationObserver(() => {
-      const inputs = document.querySelectorAll('[data-testid^="tweetTextarea_"]');
-
-      inputs.forEach(input => {
-        if (!attachedInputs.has(input)) {
-          attachedInputs.add(input);
-
-          input.addEventListener('input', () => {
-            // 清除舊的 timer
-            clearTimeout(debounceTimer);
-
-            // 設定新的 debounce timer
-            debounceTimer = setTimeout(() => {
-              const content = getTextContent();
-              if (content) {
-                sendDraft(content);
-              }
-            }, DEBOUNCE_DELAY);
-          });
-
-          // 離開輸入框時立即存一次草稿
-          input.addEventListener('blur', () => {
-            clearTimeout(debounceTimer);
-            const content = getTextContent();
-            if (content) {
-              sendDraft(content);
-            }
-          });
-
-          console.log(LOG, 'Twitter: 已附加草稿監聽到輸入框');
-        }
-      });
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
-    console.log(LOG, 'Twitter: 草稿監聽已啟動');
-  }
 
   // 設定事件監聽
   function setupListener() {
@@ -276,12 +147,7 @@
         }
 
         console.log(LOG, 'Twitter: 偵測到發佈按鈕點擊 (via testid)');
-
-        // 擷取並發送內容
-        const content = getTextContent();
-        if (content) {
-          sendPost(content);
-        }
+        pipeline.capturePost();
         return;
       }
 
@@ -291,11 +157,7 @@
         if (genericButton.getAttribute('aria-disabled') === 'true') {
           return;
         }
-
-        const content = getTextContent();
-        if (content) {
-          sendPost(content);
-        }
+        pipeline.capturePost();
       }
     }, true);
 
@@ -305,29 +167,11 @@
       if (!e.target.closest('[data-testid^="tweetTextarea_"]')) return;
 
       console.log(LOG, 'Twitter: 偵測到鍵盤發文 (Cmd/Ctrl+Enter)');
-      const content = getTextContent();
-      if (content) {
-        sendPost(content);
-      }
+      pipeline.capturePost();
     }, true);
 
     console.log(LOG, 'Twitter: 監聽已啟動');
   }
 
-  // 初始化
-  function init() {
-    console.log(LOG, 'Twitter: 初始化中...', window.location.href);
-
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
-        setupListener();
-        setupDraftListener();
-      });
-    } else {
-      setupListener();
-      setupDraftListener();
-    }
-  }
-
-  init();
+  pipeline.init(setupListener);
 })();

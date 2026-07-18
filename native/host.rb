@@ -6,7 +6,7 @@ require 'json'
 require 'open3'
 require 'securerandom'
 
-HOST_VERSION = '1.1.2'
+HOST_VERSION = '1.1.3'
 MAX_MESSAGE_BYTES = 64 * 1024 * 1024
 APP_DIRECTORY = ENV.fetch(
   'SP2O_CONFIG_DIR',
@@ -78,37 +78,40 @@ def safe_parts(relative_path)
   parts
 end
 
-def resolve_target(root, relative_path, create_directories: false)
-  parts = safe_parts(relative_path)
-  filename = parts.pop
+def walk_directories(root, parts, create_directories: false)
   current = root
-
   parts.each do |part|
     current = File.join(current, part)
     raise 'Symbolic links are not allowed in Vault paths' if File.symlink?(current)
     if File.exist?(current)
       raise 'Vault path component is not a folder' unless File.directory?(current)
     elsif create_directories
-      Dir.mkdir(current)
+      begin
+        Dir.mkdir(current)
+      rescue Errno::EEXIST
+        # 多個 host 程序可能同時建立同一層資料夾（圖片平行寫入）
+        raise 'Vault path component is not a folder' unless File.directory?(current)
+      end
     else
       return nil
     end
   end
+  current
+end
 
-  target = File.join(current, filename)
+def resolve_target(root, relative_path, create_directories: false)
+  parts = safe_parts(relative_path)
+  filename = parts.pop
+  directory = walk_directories(root, parts, create_directories: create_directories)
+  return nil if directory.nil?
+
+  target = File.join(directory, filename)
   raise 'Symbolic links are not allowed in Vault paths' if File.symlink?(target)
   target
 end
 
 def resolve_directory(root, relative_path)
-  current = root
-  safe_parts(relative_path).each do |part|
-    current = File.join(current, part)
-    raise 'Symbolic links are not allowed in Vault paths' if File.symlink?(current)
-    return nil unless File.exist?(current)
-    raise 'Vault path component is not a folder' unless File.directory?(current)
-  end
-  current
+  walk_directories(root, safe_parts(relative_path))
 end
 
 def atomic_write(path, bytes)
@@ -223,7 +226,8 @@ def handle_message(message)
     removed = 0
     if media_root && File.directory?(media_root)
       Dir.each_child(media_root) do |name|
-        next unless name.match?(/^\d{4}-\d{2}-\d{2}_\d{4}_.+/)
+        # 摘要可能是空字串（檔名以底線結尾），所以底線後不要求任何字元
+        next unless name.match?(/^\d{4}-\d{2}-\d{2}_\d{4}_/)
 
         directory = File.join(media_root, name)
         next if File.symlink?(directory) || !File.directory?(directory) || !Dir.empty?(directory)
@@ -240,7 +244,21 @@ def handle_message(message)
   end
 end
 
-while (message = read_message)
+loop do
+  # read_message 也要保護：framing 錯誤時回覆 framed 錯誤再結束，
+  # 而不是讓程序直接崩潰、Chrome 只看到 "Native host has exited"
+  begin
+    message = read_message
+  rescue StandardError => error
+    begin
+      write_message('ok' => false, 'error' => error.message, 'version' => HOST_VERSION)
+    rescue StandardError
+      # stdout 也壞掉時已無法回報，直接結束
+    end
+    break
+  end
+  break if message.nil?
+
   begin
     response = handle_message(message)
     write_message(response)

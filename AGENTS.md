@@ -20,8 +20,9 @@
 - `CLAUDE.md` 的 REST-only 架構與 `v1.4.0` 是過時現況，不得據此改回舊資料流。
 - 已完成：X／Threads 圖片同步與獨立附件路徑（v1.6–1.7）、Native Helper 預設模式（v2.0）、Popup 清草稿／預覽／開啟／刪除／同步（v2.1）、iCloud 刪除修復（v2.1.2）、公開安裝與 Chrome Web Store 發布資料（v2.2）。
 - `CLAUDE.md` 未記載的預設圖片路徑為 `附件/Social Post to Obsidian`。
+- 舊設定值 `storageMode: 'direct'` 仍會在啟動時遷移成 `native`；background 與 popup 的 `'direct'` 相容分支是活的，不得當死碼移除。
 - v2.2 發布前只剩人工項目：正式 Store item／extension ID、乾淨測試資料的實際 Popup screenshot、真實流程驗收、push／tag／Release／送審。
-- 截至此日期 v2.x 只存在 local `main`，`origin/main` 尚未同步。
+- 截至此日期 v2.x 只存在 local `main`，`origin/main` 尚未同步；未經使用者明確指示不得 push。
 
 ## Native Helper 不可破壞的規則
 
@@ -51,7 +52,7 @@ tell application "Finder" to delete targetFile
 
 - iCloud 檔案用 Finder 移到垃圾桶；一般本機 Vault 保留 `File.delete`，其他路徑只有 `Errno::EPERM` 才 fallback Finder。
 - `move_to_trash` 只有在 Finder 成功且原路徑消失後才回報成功；首次 Automation 提示允許後須重試。
-- 隔離實測用 `.sp2o-delete-test` 與唯一檔名；清掉原檔、測試目錄及可能落在兩處 Trash 的測試檔，不拿真實筆記測刪除。
+- 隔離實測用 `.sp2o-delete-test` 與唯一檔名；清掉原檔、測試目錄及可能落在 `~/Library/Mobile Documents/.Trash` 或 `~/.Trash` 的測試檔，不拿真實筆記測刪除。
 
 ## Popup／Vault 一致性
 

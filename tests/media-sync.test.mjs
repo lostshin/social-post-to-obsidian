@@ -56,8 +56,22 @@ try {
   assert.deepEqual(sendNativeHostMessage({ action: 'ping' }, configDirectory), {
     ok: true,
     configured: false,
-    version: '1.1.2'
+    version: '1.1.3'
   });
+
+  // framing 錯誤：host 需回傳 framed 錯誤訊息後結束，而不是直接崩潰
+  {
+    const result = spawnSync('/usr/bin/ruby', ['native/host.rb'], {
+      input: Buffer.from([0x01, 0x02]),
+      env: { ...process.env, SP2O_CONFIG_DIR: configDirectory }
+    });
+    assert.equal(result.status, 0, result.stderr.toString());
+    assert.ok(result.stdout.length >= 4, 'Native host did not return a framed error response');
+    const framedLength = result.stdout.readUInt32LE(0);
+    const framedError = JSON.parse(result.stdout.subarray(4, 4 + framedLength).toString());
+    assert.equal(framedError.ok, false);
+    assert.match(framedError.error, /Invalid native message header/);
+  }
   assert.equal(sendNativeHostMessage({ action: 'configure', vaultPath }, configDirectory).ok, true);
   assert.equal(sendNativeHostMessage({ action: 'ping' }, configDirectory).vaultName, 'Test Vault');
 
@@ -85,13 +99,16 @@ try {
   );
 
   mkdirSync(join(mediaRoot, '2026-07-01_0900_old-empty'), { recursive: true });
+  // 摘要為空字串的資料夾（檔名以底線結尾）也必須能被清理
+  mkdirSync(join(mediaRoot, '2026-07-02_0900_'), { recursive: true });
   mkdirSync(join(mediaRoot, 'unrelated-empty'), { recursive: true });
   const cleanup = sendNativeHostMessage({
     action: 'cleanEmptyMediaFolders',
     path: '附件/Social Post to Obsidian'
   }, configDirectory);
-  assert.equal(cleanup.removed, 1);
+  assert.equal(cleanup.removed, 2);
   assert.equal(existsSync(join(mediaRoot, '2026-07-01_0900_old-empty')), false);
+  assert.equal(existsSync(join(mediaRoot, '2026-07-02_0900_')), false);
   assert.equal(existsSync(join(mediaRoot, 'unrelated-empty')), true);
   assert.equal(existsSync(join(mediaRoot, '2026-07-18_1100_has-image')), true);
 
@@ -194,6 +211,10 @@ function loadBackground() {
       async sendNativeMessage(host, message) {
         assert.equal(host, 'com.lostshin.social_post_to_obsidian');
         nativeMessages.push(message);
+        // rejected：host 有回應但拒絕（永久性錯誤，不可進離線佇列）
+        if (nativeMode === 'rejected') {
+          return { ok: false, error: 'Vault is not configured' };
+        }
         if (nativeMode !== 'ok' && !(nativeMode === 'missing' && message.action === 'exists')) {
           throw new Error('Specified native messaging host not found');
         }
@@ -244,13 +265,14 @@ function loadBackground() {
     if (String(url).startsWith('http://127.0.0.1:27123/vault/')) {
       requests.push({ url: String(url), init });
       if (localMode === 'offline') throw new TypeError('Failed to fetch');
+      if (localMode === 'unauthorized') return new Response(null, { status: 401 });
       if (localMode === 'missing' && init.method === 'GET') return new Response(null, { status: 404 });
       return new Response(null, { status: 204 });
     }
     throw new Error(`Unexpected fetch: ${url}`);
   }
 
-  const context = vm.createContext({
+  const sandbox = {
     console,
     chrome,
     fetch: fetchStub,
@@ -262,7 +284,12 @@ function loadBackground() {
     btoa,
     setTimeout,
     clearTimeout
-  });
+  };
+  const context = vm.createContext(sandbox);
+  // service worker 的 importScripts：在同一 context 內載入共用檔
+  sandbox.importScripts = (...files) => {
+    for (const file of files) vm.runInContext(readFileSync(file, 'utf8'), context);
+  };
   vm.runInContext(readFileSync('background.js', 'utf8'), context);
   return {
     alarmCreates,
@@ -324,6 +351,14 @@ const imageOnlyFilename = background.context.generateFilename({
   timestamp: '2026-07-18T11:00:00+08:00'
 });
 assert.equal(imageOnlyFilename, '2026-07-18_1100_圖片貼文.md');
+// 內容全是不合法檔名字元時，摘要退回 fallback 而非空字串
+assert.equal(
+  background.context.generateFilename({ content: '???', timestamp: '2026-07-18T11:00:00+08:00' }),
+  '2026-07-18_1100_貼文.md'
+);
+assert.equal(background.context.platformDisplayName('x', true), 'Twitter');
+assert.equal(background.context.platformDisplayName('x'), 'Twitter/X');
+assert.equal(background.context.platformDisplayName('threads'), 'Threads');
 assert.equal(background.context.resolveStorageMode({}), 'native');
 assert.equal(background.context.resolveStorageMode({ apiKey: 'legacy-key' }), 'rest');
 assert.equal(background.context.resolveStorageMode({ storageMode: 'direct', apiKey: 'legacy-key' }), 'native');
@@ -356,10 +391,11 @@ assert.equal(nativeWrites[0].data, '/9j/');
 assert.equal(nativeWrites[1].path, path);
 assert.equal(nativeWrites[1].encoding, 'utf8');
 assert.match(nativeWrites[1].data, /!\[Helper 寫入圖片\]/);
-assert.deepEqual(JSON.parse(JSON.stringify(nativeBackground.nativeMessages.at(-1))), {
-  action: 'cleanEmptyMediaFolders',
-  path: '附件/Social Post to Obsidian'
-});
+// 發文流程不再觸發空資料夾清理（剛寫完必非空；清理交給刪除流程與定期 alarm）
+assert.equal(
+  nativeBackground.nativeMessages.some(message => message.action === 'cleanEmptyMediaFolders'),
+  false
+);
 
 nativeBackground.stored.storageMode = 'native';
 nativeBackground.stored.basePath = '個人創作/社群推文';
@@ -544,5 +580,49 @@ assert.match(
   decodeURIComponent(background.requests.at(-2).url),
   /附件\/Social Post to Obsidian\/2026-07-18_1100_圖片同步測試\/image-01\.jpg$/
 );
+
+// 發佈失敗（REST 回 401，非連線錯誤）：不進離線佇列，且草稿檔與 draftStatus 都保留
+const failedPublishBackground = loadBackground();
+failedPublishBackground.stored.storageMode = 'rest';
+failedPublishBackground.stored.apiKey = 'test-key';
+failedPublishBackground.stored.port = 27123;
+failedPublishBackground.stored.draftStatus_x = {
+  path: '個人創作/社群推文/_草稿_Twitter.md'
+};
+failedPublishBackground.setLocalMode('unauthorized');
+await failedPublishBackground.context.handlePublishDraft({
+  content: '發佈失敗測試',
+  platform: 'x',
+  url: 'https://x.com/author/status/9',
+  timestamp: '2026-07-18T11:05:00+08:00'
+}, null);
+assert.equal('draftStatus_x' in failedPublishBackground.stored, true);
+assert.equal((failedPublishBackground.stored.offlineQueue || []).length, 0);
+assert.equal(
+  failedPublishBackground.requests.some(request => request.init.method === 'DELETE'),
+  false
+);
+
+// Native Host 回報永久性錯誤（如 Vault 未設定）：向上拋出、不得進離線佇列
+const rejectedNativeBackground = loadBackground();
+rejectedNativeBackground.setNativeMode('rejected');
+await assert.rejects(
+  () => rejectedNativeBackground.context.saveWithQueueFallback(
+    path,
+    filename,
+    { ...postData, media: [] },
+    nativeSettings,
+    null
+  ),
+  /Vault is not configured/
+);
+assert.equal((rejectedNativeBackground.stored.offlineQueue || []).length, 0);
+
+// recentSaves 依 path 去重：同一份檔案重送/修正只保留一筆，刪除時不會誤刪多筆
+const dedupBackground = loadBackground();
+await dedupBackground.context.recordRecentSave({ filename, path, platform: 'x' });
+await dedupBackground.context.recordRecentSave({ filename, path, platform: 'x' });
+assert.equal(dedupBackground.stored.recentSaves.length, 1);
+assert.equal(dedupBackground.stored.recentSaves[0].path, path);
 
 console.log('Media parser and Vault bundle tests passed.');

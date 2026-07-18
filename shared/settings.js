@@ -1,0 +1,16 @@
+// 共用設定與常數：background（importScripts）與 popup（<script>）載入同一份，
+// 避免兩處各自維護一份判斷邏輯而彼此 drift。
+const DEFAULT_BASE_PATH = '個人創作/社群推文';
+const DEFAULT_MEDIA_PATH = '附件/Social Post to Obsidian';
+
+// 舊版 'direct' 一律視為 native；未設定時有 API Key 才推定為 rest
+function resolveStorageMode(settings) {
+  if (settings.storageMode === 'direct') return 'native';
+  return settings.storageMode || (settings.apiKey ? 'rest' : 'native');
+}
+
+// 平台顯示名稱；short 供檔名使用——檔名不能含 '/'，所以檔名用 'Twitter' 而非 'Twitter/X'
+function platformDisplayName(platform, short = false) {
+  if (platform === 'x') return short ? 'Twitter' : 'Twitter/X';
+  return 'Threads';
+}

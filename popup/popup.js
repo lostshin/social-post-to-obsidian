@@ -31,9 +31,17 @@ function readPort() {
   return Number.isInteger(enteredPort) ? enteredPort : 27123;
 }
 
-function resolveStorageMode(settings) {
-  if (settings.storageMode === 'direct') return 'native';
-  return settings.storageMode || (settings.apiKey ? 'rest' : 'native');
+// 依 port 決定協定（27124 是 Local REST API 的 HTTPS 埠）
+function apiBase(port) {
+  const protocol = Number(port) === 27124 ? 'https' : 'http';
+  return `${protocol}://127.0.0.1:${port}`;
+}
+
+// REST 連線探測：「測試連線」按鈕與常駐燈號共用同一份，避免兩處判斷 drift
+async function pingRestApi(port, apiKey) {
+  return fetch(`${apiBase(port)}/`, {
+    headers: { 'Authorization': `Bearer ${apiKey}` }
+  });
 }
 
 function updateModeUI() {
@@ -86,8 +94,8 @@ async function saveSettings() {
   const storageMode = storageModeSelect.value;
   const apiKey = apiKeyInput.value.trim();
   const port = readPort();
-  const basePath = basePathInput.value.trim() || '個人創作/社群推文';
-  const mediaPath = mediaPathInput.value.trim() || '附件/Social Post to Obsidian';
+  const basePath = basePathInput.value.trim() || DEFAULT_BASE_PATH;
+  const mediaPath = mediaPathInput.value.trim() || DEFAULT_MEDIA_PATH;
 
   if (storageMode === 'native') {
     let nativeStatus;
@@ -179,14 +187,7 @@ async function testConnection() {
   showStatus('正在連線…', 'info');
 
   try {
-    // 27124 是 Local REST API 的 HTTPS 埠
-    const protocol = port === 27124 ? 'https' : 'http';
-    const response = await fetch(`${protocol}://127.0.0.1:${port}/`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`
-      }
-    });
+    const response = await pingRestApi(port, apiKey);
 
     if (response.ok) {
       const data = await response.json();
@@ -251,13 +252,8 @@ async function checkConnection() {
     return;
   }
 
-  const port = settings.port || 27123;
-  const protocol = port === 27124 ? 'https' : 'http';
-
   try {
-    const response = await fetch(`${protocol}://127.0.0.1:${port}/`, {
-      headers: { 'Authorization': `Bearer ${settings.apiKey}` }
-    });
+    const response = await pingRestApi(settings.port || 27123, settings.apiKey);
     if (response.ok) {
       connDot.className = 'dot ok';
       connText.textContent = 'Obsidian 已連線';
@@ -409,8 +405,8 @@ async function deleteActivityItem(button, kind, filename, path) {
 async function renderDrafts() {
   const stored = await chrome.storage.local.get(['draftStatus_x', 'draftStatus_threads']);
   const drafts = [
-    ['Twitter/X', stored.draftStatus_x],
-    ['Threads', stored.draftStatus_threads]
+    [platformDisplayName('x'), stored.draftStatus_x],
+    [platformDisplayName('threads'), stored.draftStatus_threads]
   ].filter(([, d]) => d);
 
   draftSection.hidden = drafts.length === 0;
@@ -475,7 +471,7 @@ async function renderRecent() {
   }
 
   for (const item of recentSaves) {
-    const platformName = item.platform === 'x' ? 'Twitter/X' : 'Threads';
+    const platformName = platformDisplayName(item.platform);
     recentList.appendChild(buildListItem(
       item.filename,
       item.path,
@@ -495,12 +491,17 @@ function toggleApiKeyVisibility() {
   apiKeyInput.focus();
 }
 
-// popup 開著的時候，儲存狀態變動即時反映
+// popup 開著的時候，儲存狀態變動即時反映；只重繪實際變動的區塊
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  renderDrafts();
-  renderRecent();
-  renderQueueInfo();
+  const draftsChanged = changes.draftStatus_x || changes.draftStatus_threads;
+  if (draftsChanged || changes.recentSaves) {
+    // 重繪會移除 hover 中的清單項目，先收掉預覽避免留下過期的孤兒 popover
+    hidePreview();
+  }
+  if (draftsChanged) renderDrafts();
+  if (changes.recentSaves) renderRecent();
+  if (changes.offlineQueue) renderQueueInfo();
   if (changes.storageMode || changes.vaultName) checkConnection();
 });
 

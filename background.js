@@ -5,6 +5,9 @@ try {
   console.log('[Social Post to Obsidian] background v' + chrome.runtime.getManifest().version + ' 已啟動');
 } catch (e) { /* 測試環境略過 */ }
 
+// 共用設定邏輯與預設路徑（popup 亦載入同一份，見 shared/settings.js）
+importScripts('shared/settings.js');
+
 // 監聽來自 content script 的訊息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const tabId = sender.tab ? sender.tab.id : null;
@@ -26,7 +29,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'GET_NATIVE_STATUS':
       sendNativeRequest({ action: 'ping' }).then(
         (response) => sendResponse(response),
-        (error) => sendResponse({ ok: false, error: error.message })
+        (error) => sendResponse(error.nativeResponse || { ok: false, error: error.message })
       );
       return true;
     case 'CHOOSE_NATIVE_VAULT':
@@ -67,18 +70,26 @@ const STORAGE_SETTING_KEYS = ['storageMode', 'apiKey', 'port', 'basePath', 'medi
 const NATIVE_HOST_NAME = 'com.lostshin.social_post_to_obsidian';
 const MAINTENANCE_ALARM = 'sp2o-vault-maintenance';
 
-function resolveStorageMode(settings) {
-  if (settings.storageMode === 'direct') return 'native';
-  return settings.storageMode || (settings.apiKey ? 'rest' : 'native');
-}
-
 async function getStorageSettings() {
   return chrome.storage.local.get(STORAGE_SETTING_KEYS);
 }
 
 async function sendNativeRequest(message) {
-  const response = await chrome.runtime.sendNativeMessage(NATIVE_HOST_NAME, message);
-  if (!response?.ok) throw new Error(response?.error || '本機 Helper 沒有回應');
+  let response;
+  try {
+    response = await chrome.runtime.sendNativeMessage(NATIVE_HOST_NAME, message);
+  } catch (error) {
+    // Host 無法啟動或中途斷線（未安裝、崩潰）：暫時性問題，正式貼文可進離線佇列
+    error.isStorageUnavailableError = true;
+    throw error;
+  }
+  if (!response?.ok) {
+    // Host 有回應但拒絕（Vault 未設定、路徑不合法）：重試不會自己恢復，不進佇列
+    const error = new Error(response?.error || '本機 Helper 沒有回應');
+    error.isNativeHostError = true;
+    error.nativeResponse = response;
+    throw error;
+  }
   return response;
 }
 
@@ -118,9 +129,9 @@ async function handleSaveDraft(data, tabId) {
       return;
     }
 
-    const platformName = data.platform === 'x' ? 'Twitter' : 'Threads';
+    const platformName = platformDisplayName(data.platform, true);
     const filename = `_草稿_${platformName}.md`;
-    const fullPath = `${settings.basePath || '個人創作/社群推文'}/${filename}`;
+    const fullPath = `${settings.basePath || DEFAULT_BASE_PATH}/${filename}`;
 
     const markdown = generateDraftMarkdown(data);
     await saveVaultFile(markdown, fullPath, settings, 'text/markdown');
@@ -139,10 +150,10 @@ async function handleSaveDraft(data, tabId) {
     });
   } catch (error) {
     // 草稿失敗不跳系統通知（打字中會很吵）；正式貼文有離線佇列保底
-    if (isConnectionError(error)) {
+    if (isConnectionError(error) || error.isNativeHostError) {
       // 用 log 而非 warn：warn 會被收進擴充功能錯誤頁，暫時無法寫入是預期情況
       console.log('[Social Post to Obsidian] Draft save skipped (Vault 無法寫入)');
-      sendDraftStatus(tabId, false, error.isVaultWriteError
+      sendDraftStatus(tabId, false, (error.isNativeHostError || error.isVaultWriteError)
         ? 'Vault 尚未授權，草稿未暫存'
         : 'Obsidian 未連線，草稿未暫存');
     } else {
@@ -160,11 +171,9 @@ function sendDraftStatus(tabId, ok, text) {
   });
 }
 
-// 處理發佈（刪除草稿 + 存正式檔案）
+// 處理發佈（存正式檔案 + 刪除草稿）
 async function handlePublishDraft(data, tabId) {
   try {
-    lastPublishTimestamp[data.platform] = data.timestamp;
-
     const settings = await getStorageSettings();
 
     if (resolveStorageMode(settings) === 'rest' && !settings.apiKey) {
@@ -172,18 +181,24 @@ async function handlePublishDraft(data, tabId) {
       return;
     }
 
-    const basePath = settings.basePath || '個人創作/社群推文';
-    const platformName = data.platform === 'x' ? 'Twitter' : 'Threads';
+    const basePath = settings.basePath || DEFAULT_BASE_PATH;
 
-    // 1. 刪除草稿
-    const draftPath = `${basePath}/_草稿_${platformName}.md`;
-    await deleteVaultFile(draftPath, settings);
-    await chrome.storage.local.remove('draftStatus_' + data.platform);
-
-    // 2. 存正式檔案
+    // 1. 先存正式檔案；失敗（且未進離線佇列）時保留草稿檔與 draftStatus，內容不遺失
     const filename = generateFilename(data);
     const fullPath = `${basePath}/${filename}`;
     await saveWithQueueFallback(fullPath, filename, data, settings, tabId);
+
+    // 發佈已受理（含進入離線佇列）後，遲到的舊草稿才可丟棄
+    lastPublishTimestamp[data.platform] = data.timestamp;
+
+    // 2. 刪除草稿；刪除失敗時保留 draftStatus，讓 popup 清單與 Vault 檔案維持一致
+    const draftPath = `${basePath}/_草稿_${platformDisplayName(data.platform, true)}.md`;
+    try {
+      await deleteVaultFile(draftPath, settings, true);
+      await chrome.storage.local.remove('draftStatus_' + data.platform);
+    } catch (error) {
+      console.log('[Social Post to Obsidian] Draft cleanup failed:', error.message);
+    }
   } catch (error) {
     console.error('[Social Post to Obsidian] Publish failed:', error);
     notifyResult(tabId, false, error.message);
@@ -232,7 +247,6 @@ const IMAGE_EXTENSIONS = {
   'image/webp': 'webp',
   'image/avif': 'avif'
 };
-const DEFAULT_MEDIA_PATH = '附件/Social Post to Obsidian';
 
 // Write images before Markdown. Retries overwrite the same paths, so the operation is idempotent.
 async function savePostBundle(data, fullPath, filename, settings) {
@@ -240,15 +254,13 @@ async function savePostBundle(data, fullPath, filename, settings) {
   const noteDirectory = fullPath.includes('/') ? fullPath.slice(0, fullPath.lastIndexOf('/')) : '';
   const mediaDirectory = normalizeVaultPath(settings.mediaPath || DEFAULT_MEDIA_PATH);
   const assetFolder = filename.replace(/\.md$/i, '');
-  const mediaResults = [];
 
-  for (let index = 0; index < media.length; index++) {
-    const item = media[index];
+  // 各張圖片互相獨立（檔名用固定 index），平行下載與寫入以縮短發文延遲
+  const mediaResults = await Promise.all(media.map(async (item, index) => {
     try {
       const image = await downloadImage(item.url);
       const imageName = `image-${String(index + 1).padStart(2, '0')}.${image.extension}`;
       const vaultPath = `${mediaDirectory}/${assetFolder}/${imageName}`;
-      const relativePath = relativeVaultPath(noteDirectory, vaultPath);
 
       await saveVaultFile(
         image.bytes,
@@ -256,18 +268,17 @@ async function savePostBundle(data, fullPath, filename, settings) {
         settings,
         image.contentType
       );
-      mediaResults.push({ path: relativePath, alt: item.alt || `圖片 ${index + 1}` });
+      return { path: relativeVaultPath(noteDirectory, vaultPath), alt: item.alt || `圖片 ${index + 1}` };
     } catch (error) {
       // Propagate Vault errors for queue handling, but keep the note when a remote image fails.
       if (error.isObsidianApiError || error.isVaultWriteError) throw error;
       console.log('[Social Post to Obsidian] Media download skipped:', index + 1, error.message);
-      mediaResults.push({ url: item.url, alt: item.alt || `圖片 ${index + 1}`, failed: true });
+      return { url: item.url, alt: item.alt || `圖片 ${index + 1}`, failed: true };
     }
-  }
+  }));
 
   const markdown = generateMarkdown(data, mediaResults);
   await saveVaultFile(markdown, fullPath, settings, 'text/markdown');
-  await cleanupEmptyMediaFolders(settings);
 
   return {
     savedMedia: mediaResults.filter(item => !item.failed).length,
@@ -374,7 +385,7 @@ async function deleteVaultFile(filepath, settings, strict = false) {
 
 async function clearAutoDrafts() {
   const settings = await getStorageSettings();
-  const basePath = settings.basePath || '個人創作/社群推文';
+  const basePath = settings.basePath || DEFAULT_BASE_PATH;
   const stored = await chrome.storage.local.get(['draftStatus_x', 'draftStatus_threads']);
   const drafts = [
     { key: 'draftStatus_x', filename: '_草稿_Twitter.md' },
@@ -516,7 +527,7 @@ async function handleSavePost(data, tabId) {
     }
 
     const filename = generateFilename(data);
-    const fullPath = `${settings.basePath || '個人創作/社群推文'}/${filename}`;
+    const fullPath = `${settings.basePath || DEFAULT_BASE_PATH}/${filename}`;
 
     await saveWithQueueFallback(fullPath, filename, data, settings, tabId);
   } catch (error) {
@@ -613,16 +624,15 @@ async function retryOfflineQueue() {
   }
 }
 
-// service worker 啟動時，若佇列有東西就確保重試 alarm 存在
-chrome.storage.local.get(QUEUE_KEY).then((stored) => {
+// service worker 啟動：一次讀完設定與佇列（SW 常被 kill/重啟，減少每次冷啟動的 storage 往返）
+chrome.storage.local.get([...STORAGE_SETTING_KEYS, QUEUE_KEY]).then(async (stored) => {
+  // 佇列有東西就確保重試 alarm 存在
   if ((stored[QUEUE_KEY] || []).length > 0) {
     chrome.alarms.create(RETRY_ALARM, { periodInMinutes: 1 });
   }
-});
 
-getStorageSettings().then(async (settings) => {
-  if (settings.storageMode !== 'native' && settings.storageMode !== 'direct') return;
-  if (settings.storageMode === 'direct') {
+  if (stored.storageMode !== 'native' && stored.storageMode !== 'direct') return;
+  if (stored.storageMode === 'direct') {
     await chrome.storage.local.set({ storageMode: 'native' });
   }
   const status = await sendNativeRequest({ action: 'ping' });
@@ -636,7 +646,8 @@ getStorageSettings().then(async (settings) => {
 // 記錄最近儲存（popup 顯示用，保留 5 筆）
 async function recordRecentSave(entry) {
   const stored = await chrome.storage.local.get('recentSaves');
-  const recentSaves = stored.recentSaves || [];
+  // 同路徑代表同一份檔案（補存/修正會覆寫），移除舊項目避免清單重複與刪除時誤刪多筆
+  const recentSaves = (stored.recentSaves || []).filter(item => item.path !== entry.path);
   recentSaves.unshift({ ...entry, savedAt: new Date().toISOString() });
   await chrome.storage.local.set({ recentSaves: recentSaves.slice(0, 5) });
 }
@@ -670,7 +681,7 @@ function notifyResult(tabId, ok, text) {
 
 // 產生草稿 Markdown 內容
 function generateDraftMarkdown(data) {
-  const platformName = data.platform === 'x' ? 'Twitter/X' : 'Threads';
+  const platformName = platformDisplayName(data.platform);
   const updated = formatDateTime(data.timestamp);
 
   return `---
@@ -688,7 +699,7 @@ ${data.content}
 function generateMarkdown(data, mediaResults = []) {
   const title = extractTitle(data.content || '圖片貼文');
   const created = formatDateTime(data.timestamp);
-  const platformName = data.platform === 'x' ? 'Twitter/X' : 'Threads';
+  const platformName = platformDisplayName(data.platform);
 
   // 基本 frontmatter
   let frontmatter = `---
@@ -785,7 +796,8 @@ function generateFilename(data) {
     .replace(/[\\/:*?"<>|]/g, '')
     .trim();
 
-  return `${dateStr}_${hours}${minutes}_${summary}.md`;
+  // 內容全是不合法檔名字元時摘要會變空字串，補上 fallback 避免產生「_.md」結尾的檔名
+  return `${dateStr}_${hours}${minutes}_${summary || '貼文'}.md`;
 }
 
 function escapeMarkdownAlt(text) {
@@ -840,8 +852,8 @@ async function saveVaultFile(content, filename, settings, contentType) {
       });
       return;
     } catch (error) {
+      // 可否進離線佇列由 sendNativeRequest 的分類決定（Host 不可用才標 isStorageUnavailableError）
       error.isVaultWriteError = true;
-      error.isStorageUnavailableError = true;
       throw error;
     }
   }
@@ -849,9 +861,7 @@ async function saveVaultFile(content, filename, settings, contentType) {
 }
 
 function arrayBufferToBase64(content) {
-  const bytes = content instanceof ArrayBuffer
-    ? new Uint8Array(content)
-    : new Uint8Array(content.buffer, content.byteOffset, content.byteLength);
+  const bytes = new Uint8Array(content);
   const chunks = [];
   for (let offset = 0; offset < bytes.length; offset += 0x8000) {
     chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 0x8000)));
