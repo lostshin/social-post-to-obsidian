@@ -1,5 +1,7 @@
 // Service Worker - 處理貼文存檔
 
+importScripts('vault-access.js');
+
 // 啟動時印出版本，方便在 SW console 確認載入的版本
 try {
   console.log('[Social Post to Obsidian] background v' + chrome.runtime.getManifest().version + ' 已啟動');
@@ -20,6 +22,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'SAVE_POST':
       enqueue(message.data.platform, () => handleSavePost(message.data, tabId));
       break;
+    case 'RETRY_QUEUE':
+      enqueue('offline-retry', retryOfflineQueue);
+      break;
   }
 
   // 同步回應，避免 content script 因 port closed 錯誤而重送訊息
@@ -30,6 +35,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 const taskChains = {};
 // 記錄每平台最後發佈的貼文時間，用來丟棄遲到的舊草稿
 const lastPublishTimestamp = {};
+const STORAGE_SETTING_KEYS = ['storageMode', 'apiKey', 'port', 'basePath', 'mediaPath'];
+
+function resolveStorageMode(settings) {
+  return settings.storageMode || (settings.apiKey ? 'rest' : 'direct');
+}
+
+async function getStorageSettings() {
+  return chrome.storage.local.get(STORAGE_SETTING_KEYS);
+}
 
 function enqueue(platform, task) {
   const key = platform || 'default';
@@ -46,9 +60,9 @@ async function handleSaveDraft(data, tabId) {
       return;
     }
 
-    const settings = await chrome.storage.local.get(['apiKey', 'port', 'basePath']);
+    const settings = await getStorageSettings();
 
-    if (!settings.apiKey) {
+    if (resolveStorageMode(settings) === 'rest' && !settings.apiKey) {
       console.log('[Social Post to Obsidian] Draft skipped: no API key');
       sendDraftStatus(tabId, false, '尚未設定 API Key，草稿未暫存');
       return;
@@ -59,7 +73,7 @@ async function handleSaveDraft(data, tabId) {
     const fullPath = `${settings.basePath || '個人創作/社群推文'}/${filename}`;
 
     const markdown = generateDraftMarkdown(data);
-    await saveToObsidian(markdown, fullPath, settings.apiKey, settings.port || 27123);
+    await saveVaultFile(markdown, fullPath, settings, 'text/markdown');
 
     console.log('[Social Post to Obsidian] Draft saved:', filename);
     sendDraftStatus(tabId, true, `草稿已暫存 ${formatDateTime(data.timestamp).slice(-5)}`);
@@ -71,9 +85,11 @@ async function handleSaveDraft(data, tabId) {
   } catch (error) {
     // 草稿失敗不跳系統通知（打字中會很吵）；正式貼文有離線佇列保底
     if (isConnectionError(error)) {
-      // 用 log 而非 warn：warn 會被收進擴充功能錯誤頁，Obsidian 沒開是預期情況
-      console.log('[Social Post to Obsidian] Draft save skipped (Obsidian 未連線)');
-      sendDraftStatus(tabId, false, 'Obsidian 未連線，草稿未暫存');
+      // 用 log 而非 warn：warn 會被收進擴充功能錯誤頁，暫時無法寫入是預期情況
+      console.log('[Social Post to Obsidian] Draft save skipped (Vault 無法寫入)');
+      sendDraftStatus(tabId, false, error.isVaultWriteError
+        ? 'Vault 尚未授權，草稿未暫存'
+        : 'Obsidian 未連線，草稿未暫存');
     } else {
       console.error('[Social Post to Obsidian] Draft save failed:', error);
       sendDraftStatus(tabId, false, '草稿暫存失敗');
@@ -94,9 +110,9 @@ async function handlePublishDraft(data, tabId) {
   try {
     lastPublishTimestamp[data.platform] = data.timestamp;
 
-    const settings = await chrome.storage.local.get(['apiKey', 'port', 'basePath', 'mediaPath']);
+    const settings = await getStorageSettings();
 
-    if (!settings.apiKey) {
+    if (resolveStorageMode(settings) === 'rest' && !settings.apiKey) {
       notifyResult(tabId, false, '請先在擴充功能設定中輸入 Obsidian API Key');
       return;
     }
@@ -106,7 +122,7 @@ async function handlePublishDraft(data, tabId) {
 
     // 1. 刪除草稿
     const draftPath = `${basePath}/_草稿_${platformName}.md`;
-    await deleteDraft(draftPath, settings.apiKey, settings.port || 27123);
+    await deleteVaultFile(draftPath, settings);
     await chrome.storage.local.remove('draftStatus_' + data.platform);
 
     // 2. 存正式檔案
@@ -119,7 +135,7 @@ async function handlePublishDraft(data, tabId) {
   }
 }
 
-// 存檔；Obsidian 未連線時加入離線佇列，稍後自動補存
+// 存檔；目前寫入方式不可用時加入離線佇列，稍後自動補存
 async function saveWithQueueFallback(fullPath, filename, data, settings, tabId) {
   let result;
   try {
@@ -130,7 +146,10 @@ async function saveWithQueueFallback(fullPath, filename, data, settings, tabId) 
         data, path: fullPath, filename,
         platform: data.platform, url: data.url
       });
-      notifyResult(tabId, false, 'Obsidian 未連線，已加入待存佇列，連線後自動補存');
+      const direct = resolveStorageMode(settings) === 'direct';
+      notifyResult(tabId, false, direct
+        ? 'Vault 無法寫入，已加入待存佇列，重新授權後自動補存'
+        : 'Obsidian 未連線，已加入待存佇列，連線後自動補存');
       return;
     }
     throw error;
@@ -170,24 +189,23 @@ async function savePostBundle(data, fullPath, filename, settings) {
       const vaultPath = `${mediaDirectory}/${assetFolder}/${imageName}`;
       const relativePath = relativeVaultPath(noteDirectory, vaultPath);
 
-      await saveFileToObsidian(
+      await saveVaultFile(
         image.bytes,
         vaultPath,
-        settings.apiKey,
-        settings.port || 27123,
+        settings,
         image.contentType
       );
       mediaResults.push({ path: relativePath, alt: item.alt || `圖片 ${index + 1}` });
     } catch (error) {
       // Propagate Vault errors for queue handling, but keep the note when a remote image fails.
-      if (error.isObsidianApiError) throw error;
+      if (error.isObsidianApiError || error.isVaultWriteError) throw error;
       console.log('[Social Post to Obsidian] Media download skipped:', index + 1, error.message);
       mediaResults.push({ url: item.url, alt: item.alt || `圖片 ${index + 1}`, failed: true });
     }
   }
 
   const markdown = generateMarkdown(data, mediaResults);
-  await saveToObsidian(markdown, fullPath, settings.apiKey, settings.port || 27123);
+  await saveVaultFile(markdown, fullPath, settings, 'text/markdown');
 
   return {
     savedMedia: mediaResults.filter(item => !item.failed).length,
@@ -259,12 +277,25 @@ async function deleteDraft(filepath, apiKey, port) {
   }
 }
 
+async function deleteVaultFile(filepath, settings) {
+  if (resolveStorageMode(settings) === 'direct') {
+    try {
+      await SP2OVaultAccess.removeFile(filepath);
+      console.log('[Social Post to Obsidian] Draft deleted:', filepath);
+    } catch (error) {
+      console.log('[Social Post to Obsidian] Draft delete skipped:', error.message);
+    }
+    return;
+  }
+  await deleteDraft(filepath, settings.apiKey, settings.port || 27123);
+}
+
 // 處理貼文存檔（舊版相容）
 async function handleSavePost(data, tabId) {
   try {
-    const settings = await chrome.storage.local.get(['apiKey', 'port', 'basePath', 'mediaPath']);
+    const settings = await getStorageSettings();
 
-    if (!settings.apiKey) {
+    if (resolveStorageMode(settings) === 'rest' && !settings.apiKey) {
       notifyResult(tabId, false, '請先在擴充功能設定中輸入 Obsidian API Key');
       return;
     }
@@ -279,13 +310,14 @@ async function handleSavePost(data, tabId) {
   }
 }
 
-// ===== 離線佇列：Obsidian 沒開時先排隊，恢復連線後自動補存 =====
+// ===== 離線佇列：寫入方式不可用時先排隊，恢復後自動補存 =====
 
 const QUEUE_KEY = 'offlineQueue';
 const RETRY_ALARM = 'sp2o-retry-queue';
 
 function isConnectionError(error) {
-  return error.isObsidianConnectionError
+  return error.isStorageUnavailableError
+    || error.isObsidianConnectionError
     || (error instanceof TypeError && /Failed to fetch|NetworkError/i.test(error.message || ''));
 }
 
@@ -313,8 +345,17 @@ async function retryOfflineQueue() {
     return;
   }
 
-  const settings = await chrome.storage.local.get(['apiKey', 'port', 'mediaPath']);
-  if (!settings.apiKey) return;
+  const settings = await getStorageSettings();
+  if (resolveStorageMode(settings) === 'rest') {
+    if (!settings.apiKey) return;
+  } else {
+    try {
+      const permission = await SP2OVaultAccess.getPermissionStatus();
+      if (permission.status !== 'granted') return;
+    } catch {
+      return;
+    }
+  }
 
   const remaining = [];
   let saved = 0;
@@ -324,7 +365,7 @@ async function retryOfflineQueue() {
         await savePostBundle(item.data, item.path, item.filename, settings);
       } else {
         // Queue entries created before v1.6 only contain rendered Markdown.
-        await saveToObsidian(item.markdown, item.path, settings.apiKey, settings.port || 27123);
+        await saveVaultFile(item.markdown, item.path, settings, 'text/markdown');
       }
       await recordRecentSave({ filename: item.filename, path: item.path, platform: item.platform, url: item.url });
       saved++;
@@ -335,7 +376,7 @@ async function retryOfflineQueue() {
 
   await chrome.storage.local.set({ [QUEUE_KEY]: remaining });
   if (saved > 0) {
-    showNotification('已補存', `Obsidian 恢復連線，補存 ${saved} 則貼文`);
+    showNotification('已補存', `Vault 恢復可用，補存 ${saved} 則貼文`);
   }
   if (remaining.length === 0) {
     chrome.alarms.clear(RETRY_ALARM);
@@ -530,9 +571,18 @@ function apiBase(port) {
   return `${protocol}://127.0.0.1:${port}`;
 }
 
-// 儲存到 Obsidian
-async function saveToObsidian(content, filename, apiKey, port) {
-  return saveFileToObsidian(content, filename, apiKey, port, 'text/markdown');
+async function saveVaultFile(content, filename, settings, contentType) {
+  if (resolveStorageMode(settings) === 'direct') {
+    try {
+      await SP2OVaultAccess.writeFile(filename, content);
+      return;
+    } catch (error) {
+      error.isVaultWriteError = true;
+      error.isStorageUnavailableError = true;
+      throw error;
+    }
+  }
+  return saveFileToObsidian(content, filename, settings.apiKey, settings.port || 27123, contentType);
 }
 
 async function saveFileToObsidian(content, filename, apiKey, port, contentType) {

@@ -3,6 +3,11 @@ const apiKeyInput = document.getElementById('apiKey');
 const portInput = document.getElementById('port');
 const basePathInput = document.getElementById('basePath');
 const mediaPathInput = document.getElementById('mediaPath');
+const storageModeSelect = document.getElementById('storageMode');
+const directSettings = document.getElementById('directSettings');
+const restSettings = document.getElementById('restSettings');
+const chooseVaultBtn = document.getElementById('chooseVaultBtn');
+const vaultName = document.getElementById('vaultName');
 const settingsPanel = document.getElementById('settingsPanel');
 const settingsForm = document.getElementById('settingsForm');
 const toggleApiKey = document.getElementById('toggleApiKey');
@@ -20,9 +25,22 @@ function readPort() {
   return Number.isInteger(enteredPort) ? enteredPort : 27123;
 }
 
+function resolveStorageMode(settings) {
+  return settings.storageMode || (settings.apiKey ? 'rest' : 'direct');
+}
+
+function updateModeUI() {
+  const direct = storageModeSelect.value === 'direct';
+  directSettings.hidden = !direct;
+  restSettings.hidden = direct;
+  testBtn.textContent = direct ? '檢查權限' : '測試連線';
+}
+
 // 載入已儲存的設定
 async function loadSettings() {
-  const settings = await chrome.storage.local.get(['apiKey', 'port', 'basePath', 'mediaPath']);
+  const settings = await chrome.storage.local.get(['storageMode', 'apiKey', 'port', 'basePath', 'mediaPath', 'vaultName']);
+  storageModeSelect.value = resolveStorageMode(settings);
+  updateModeUI();
 
   if (settings.apiKey) {
     apiKeyInput.value = settings.apiKey;
@@ -37,34 +55,100 @@ async function loadSettings() {
     mediaPathInput.value = settings.mediaPath;
   }
 
-  settingsPanel.open = !settings.apiKey;
+  if (settings.vaultName) vaultName.textContent = settings.vaultName;
+
+  if (storageModeSelect.value === 'direct') {
+    try {
+      const permission = await SP2OVaultAccess.getPermissionStatus();
+      if (permission.name) vaultName.textContent = permission.name;
+      settingsPanel.open = permission.status !== 'granted';
+    } catch {
+      settingsPanel.open = true;
+    }
+  } else {
+    settingsPanel.open = !settings.apiKey;
+  }
 }
 
 // 儲存設定
 async function saveSettings() {
+  const storageMode = storageModeSelect.value;
   const apiKey = apiKeyInput.value.trim();
   const port = readPort();
   const basePath = basePathInput.value.trim() || '個人創作/社群推文';
   const mediaPath = mediaPathInput.value.trim() || '附件/Social Post to Obsidian';
 
-  if (!apiKey) {
-    showStatus('請輸入 API Key', 'error');
-    return;
+  if (storageMode === 'direct') {
+    let permission;
+    try {
+      permission = await SP2OVaultAccess.getPermissionStatus();
+    } catch (error) {
+      showStatus(`無法讀取 Vault 權限 · ${error.message}`, 'error');
+      return;
+    }
+    if (permission.status !== 'granted') {
+      showStatus(permission.status === 'missing' ? '請先選擇 Vault' : '請先重新授權 Vault', 'error');
+      return;
+    }
+  } else {
+    if (!apiKey) {
+      showStatus('請輸入 API Key', 'error');
+      return;
+    }
+    if (port < 1 || port > 65535) {
+      showStatus('Port 必須介於 1 到 65535', 'error');
+      portInput.focus();
+      return;
+    }
   }
 
-  if (port < 1 || port > 65535) {
-    showStatus('Port 必須介於 1 到 65535', 'error');
-    portInput.focus();
-    return;
-  }
-
-  await chrome.storage.local.set({ apiKey, port, basePath, mediaPath });
+  await chrome.storage.local.set({ storageMode, apiKey, port, basePath, mediaPath });
   showStatus('設定已儲存', 'success');
-  checkConnection();
+  await checkConnection();
+}
+
+async function chooseVault() {
+  chooseVaultBtn.disabled = true;
+  try {
+    const handle = await SP2OVaultAccess.selectVault();
+    storageModeSelect.value = 'direct';
+    updateModeUI();
+    vaultName.textContent = handle.name;
+    await chrome.storage.local.set({ storageMode: 'direct', vaultName: handle.name });
+    showStatus(`已授權 Vault：${handle.name}`, 'success');
+    await checkConnection();
+    chrome.runtime.sendMessage({ type: 'RETRY_QUEUE' });
+  } catch (error) {
+    if (error.name !== 'AbortError') showStatus(`無法選擇 Vault · ${error.message}`, 'error');
+  } finally {
+    chooseVaultBtn.disabled = false;
+  }
 }
 
 // 測試連線
 async function testConnection() {
+  if (storageModeSelect.value === 'direct') {
+    testBtn.disabled = true;
+    testBtn.textContent = '檢查中…';
+    try {
+      const permission = await SP2OVaultAccess.requestPermission();
+      if (permission.name) vaultName.textContent = permission.name;
+      if (permission.status === 'granted') {
+        showStatus(`Vault 權限正常 · ${permission.name}`, 'success');
+        chrome.runtime.sendMessage({ type: 'RETRY_QUEUE' });
+      } else {
+        showStatus(permission.status === 'missing' ? '請先選擇 Vault' : 'Vault 尚未授權', 'error');
+      }
+      await checkConnection();
+    } catch (error) {
+      showStatus(`權限檢查失敗 · ${error.message}`, 'error');
+    } finally {
+      testBtn.disabled = false;
+      updateModeUI();
+    }
+    return;
+  }
+
   const apiKey = apiKeyInput.value.trim();
   const port = readPort();
 
@@ -121,7 +205,25 @@ function showStatus(message, type) {
 
 // 開啟 popup 時自動檢查連線狀態
 async function checkConnection() {
-  const settings = await chrome.storage.local.get(['apiKey', 'port']);
+  const settings = await chrome.storage.local.get(['storageMode', 'apiKey', 'port', 'vaultName']);
+
+  if (resolveStorageMode(settings) === 'direct') {
+    try {
+      const permission = await SP2OVaultAccess.getPermissionStatus();
+      if (permission.name) vaultName.textContent = permission.name;
+      if (permission.status === 'granted') {
+        connDot.className = 'dot ok';
+        connText.textContent = `Vault 可直接寫入 · ${permission.name}`;
+      } else {
+        connDot.className = 'dot fail';
+        connText.textContent = permission.status === 'missing' ? '尚未選擇 Vault' : 'Vault 需要重新授權';
+      }
+    } catch {
+      connDot.className = 'dot fail';
+      connText.textContent = '無法讀取 Vault 權限';
+    }
+    return;
+  }
 
   if (!settings.apiKey) {
     connDot.className = 'dot fail';
@@ -151,10 +253,12 @@ async function checkConnection() {
 
 // 顯示待補存佇列數量
 async function renderQueueInfo() {
-  const { offlineQueue = [] } = await chrome.storage.local.get('offlineQueue');
+  const stored = await chrome.storage.local.get(['offlineQueue', 'storageMode', 'apiKey']);
+  const offlineQueue = stored.offlineQueue || [];
   queueInfo.hidden = offlineQueue.length === 0;
   if (offlineQueue.length > 0) {
-    queueInfo.textContent = `待補存 ${offlineQueue.length} 則（Obsidian 連線後自動補存）`;
+    const direct = resolveStorageMode(stored) === 'direct';
+    queueInfo.textContent = `待補存 ${offlineQueue.length} 則（${direct ? 'Vault 重新授權' : 'Obsidian 連線'}後自動補存）`;
   }
 }
 
@@ -240,6 +344,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   renderDrafts();
   renderRecent();
   renderQueueInfo();
+  if (changes.storageMode || changes.vaultName) checkConnection();
 });
 
 // 事件綁定
@@ -249,11 +354,15 @@ settingsForm.addEventListener('submit', (event) => {
 });
 testBtn.addEventListener('click', testConnection);
 toggleApiKey.addEventListener('click', toggleApiKeyVisibility);
+chooseVaultBtn.addEventListener('click', chooseVault);
+storageModeSelect.addEventListener('change', updateModeUI);
 
 // 初始化
-document.getElementById('version').textContent = 'v' + chrome.runtime.getManifest().version;
-loadSettings();
-checkConnection();
-renderQueueInfo();
-renderDrafts();
-renderRecent();
+async function initialize() {
+  document.getElementById('version').textContent = 'v' + chrome.runtime.getManifest().version;
+  await loadSettings();
+  await checkConnection();
+  await Promise.all([renderQueueInfo(), renderDrafts(), renderRecent()]);
+}
+
+initialize();

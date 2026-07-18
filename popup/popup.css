@@ -44,7 +44,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -298,7 +299,8 @@ label {
   font-weight: 650;
 }
 
-input {
+input,
+select {
   width: 100%;
   height: 37px;
   padding: 8px 10px;
@@ -315,17 +317,80 @@ input::placeholder {
   color: #aaa3ad;
 }
 
-input:hover {
+input:hover,
+select:hover {
   border-color: #c7becd;
 }
 
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(110, 86, 179, 0.13);
 }
 
 input:invalid:not(:placeholder-shown) {
   border-color: var(--danger);
+}
+
+.mode-panel {
+  margin-bottom: 14px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #faf8f4;
+}
+
+.mode-panel[hidden] {
+  display: none;
+}
+
+.mode-panel .form-group:last-child {
+  margin-bottom: 0;
+}
+
+.vault-picker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 37px;
+  padding: 4px 4px 4px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+
+.vault-picker span {
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-picker button {
+  flex: 0 0 auto;
+  min-height: 27px;
+  padding: 0 9px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.common-path-group {
+  margin-bottom: 0;
+}
+
+.path-grid {
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+code {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.95em;
 }
 
 .input-with-action {

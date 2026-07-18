@@ -48,6 +48,7 @@ if (!/^\d+\.\d+\.\d+$/.test(manifest.version)) {
 const referencedFiles = new Set([
   manifest.background?.service_worker,
   manifest.action?.default_popup,
+  'vault-access.js',
   ...Object.values(manifest.icons || {}),
   ...Object.values(manifest.action?.default_icon || {}),
   ...(manifest.content_scripts || []).flatMap((script) => script.js || [])
@@ -55,6 +56,14 @@ const referencedFiles = new Set([
 
 for (const path of referencedFiles) {
   requireFile(path);
+}
+
+const popupHtml = readFileSync(fromRoot('popup/popup.html'), 'utf8');
+const popupScript = readFileSync(fromRoot('popup/popup.js'), 'utf8');
+for (const match of popupScript.matchAll(/getElementById\('([^']+)'\)/g)) {
+  if (!popupHtml.includes(`id="${match[1]}"`)) {
+    fail(`popup/popup.js references missing element id: ${match[1]}`);
+  }
 }
 
 for (const size of ['16', '32', '48', '128']) {
@@ -93,6 +102,7 @@ for (const permission of manifest.host_permissions || []) {
 
 const javascriptFiles = [
   'background.js',
+  'vault-access.js',
   ...readdirSync(fromRoot('content')).filter((file) => file.endsWith('.js')).map((file) => join('content', file)),
   ...readdirSync(fromRoot('popup')).filter((file) => file.endsWith('.js')).map((file) => join('popup', file))
 ];

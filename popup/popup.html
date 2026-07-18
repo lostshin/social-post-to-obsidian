@@ -41,35 +41,60 @@
 
         <form id="settingsForm">
           <div class="form-group">
-            <div class="label-row">
-              <label for="apiKey">API Key</label>
-              <span>Local REST API</span>
-            </div>
-            <div class="input-with-action">
-              <input type="password" id="apiKey" placeholder="貼上 API Key" autocomplete="off" spellcheck="false">
-              <button type="button" id="toggleApiKey" class="input-action" aria-label="顯示 API Key" aria-pressed="false">顯示</button>
-            </div>
-            <small>Obsidian → 設定 → Local REST API</small>
+            <label for="storageMode">寫入方式</label>
+            <select id="storageMode">
+              <option value="direct">直接寫入 Vault（推薦）</option>
+              <option value="rest">Local REST API</option>
+            </select>
+            <small>直接寫入不需要 Obsidian 外掛或 API Key</small>
           </div>
 
-          <div class="form-grid">
+          <div id="directSettings" class="mode-panel">
+            <div class="label-row">
+              <label>Vault 資料夾</label>
+              <span>Chrome 檔案權限</span>
+            </div>
+            <div class="vault-picker">
+              <span id="vaultName">尚未選擇</span>
+              <button type="button" id="chooseVaultBtn" class="secondary">選擇 Vault</button>
+            </div>
+            <small>請選擇包含 <code>.obsidian</code> 的 Vault 根目錄</small>
+          </div>
+
+          <div id="restSettings" class="mode-panel" hidden>
+            <div class="form-group">
+              <div class="label-row">
+                <label for="apiKey">API Key</label>
+                <span>Local REST API</span>
+              </div>
+              <div class="input-with-action">
+                <input type="password" id="apiKey" placeholder="貼上 API Key" autocomplete="off" spellcheck="false">
+                <button type="button" id="toggleApiKey" class="input-action" aria-label="顯示 API Key" aria-pressed="false">顯示</button>
+              </div>
+              <small>Obsidian → 設定 → Local REST API</small>
+            </div>
+
             <div class="form-group form-group-port">
               <label for="port">Port</label>
               <input type="number" id="port" value="27123" min="1" max="65535" inputmode="numeric">
               <small>27123 / 27124</small>
             </div>
-
-            <div class="form-group">
-              <label for="basePath">Vault 內存檔路徑</label>
-              <input type="text" id="basePath" value="個人創作/社群推文" placeholder="資料夾路徑" spellcheck="false">
-              <small>相對於 Vault 根目錄</small>
-            </div>
           </div>
 
-          <div class="form-group media-path-group">
-            <label for="mediaPath">圖片儲存路徑</label>
-            <input type="text" id="mediaPath" value="附件/Social Post to Obsidian" placeholder="附件資料夾路徑" spellcheck="false">
-            <small>相對於 Vault 根目錄，與貼文資料夾分開</small>
+          <div class="form-group common-path-group">
+            <div class="form-grid path-grid">
+              <div class="form-group">
+                <label for="basePath">Vault 內存檔路徑</label>
+                <input type="text" id="basePath" value="個人創作/社群推文" placeholder="資料夾路徑" spellcheck="false">
+                <small>相對於 Vault 根目錄</small>
+              </div>
+
+              <div class="form-group">
+                <label for="mediaPath">圖片儲存路徑</label>
+                <input type="text" id="mediaPath" value="附件/Social Post to Obsidian" placeholder="附件資料夾路徑" spellcheck="false">
+                <small>相對於 Vault 根目錄</small>
+              </div>
+            </div>
           </div>
 
           <div class="button-group">
@@ -104,6 +129,7 @@
     </footer>
   </div>
 
+  <script src="../vault-access.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

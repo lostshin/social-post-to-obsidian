@@ -18,7 +18,7 @@ function loadCommon() {
     chrome: {
       runtime: {
         id: 'test',
-        getManifest: () => ({ version: '1.7.0' }),
+        getManifest: () => ({ version: '1.8.0' }),
         onMessage: { addListener() {} }
       }
     }
@@ -28,6 +28,60 @@ function loadCommon() {
 }
 
 const common = loadCommon();
+
+function loadVaultAccess() {
+  const context = vm.createContext({ console });
+  vm.runInContext(readFileSync('vault-access.js', 'utf8'), context);
+  return context.SP2OVaultAccess;
+}
+
+class FakeDirectoryHandle {
+  constructor(name) {
+    this.name = name;
+    this.directories = new Map();
+    this.files = new Map();
+  }
+
+  async getDirectoryHandle(name, options = {}) {
+    if (!this.directories.has(name)) {
+      if (!options.create) throw new DOMException('Not found', 'NotFoundError');
+      this.directories.set(name, new FakeDirectoryHandle(name));
+    }
+    return this.directories.get(name);
+  }
+
+  async getFileHandle(name, options = {}) {
+    if (!this.files.has(name) && !options.create) throw new DOMException('Not found', 'NotFoundError');
+    const directory = this;
+    return {
+      async createWritable() {
+        return {
+          async write(content) { directory.files.set(name, content); },
+          async close() {}
+        };
+      }
+    };
+  }
+
+  async removeEntry(name) {
+    if (!this.files.delete(name)) throw new DOMException('Not found', 'NotFoundError');
+  }
+}
+
+const vaultAccess = loadVaultAccess();
+const fakeVault = new FakeDirectoryHandle('Test Vault');
+await vaultAccess.writeFileWithHandle(fakeVault, '個人創作/社群推文/test.md', '# direct');
+assert.equal(
+  fakeVault.directories.get('個人創作').directories.get('社群推文').files.get('test.md'),
+  '# direct'
+);
+await vaultAccess.removeFileWithHandle(fakeVault, '個人創作/社群推文/test.md');
+assert.equal(fakeVault.directories.get('個人創作').directories.get('社群推文').files.has('test.md'), false);
+await vaultAccess.removeFileWithHandle(fakeVault, '個人創作/社群推文/missing.md');
+await assert.rejects(
+  vaultAccess.writeFileWithHandle(fakeVault, '../outside.md', 'blocked'),
+  /Vault 路徑無效/
+);
 
 const xResponse = JSON.stringify({
   data: {
@@ -97,12 +151,31 @@ assert.deepEqual(JSON.parse(JSON.stringify(parsedThreads.media)), [
 function loadBackground() {
   const stored = {};
   const requests = [];
+  const directWrites = [];
+  const directDeletes = [];
   let localMode = 'ok';
+  let directMode = 'ok';
+
+  const directAccess = {
+    async getPermissionStatus() {
+      return directMode === 'ok'
+        ? { status: 'granted', name: 'Test Vault' }
+        : { status: 'prompt', name: 'Test Vault' };
+    },
+    async writeFile(path, content) {
+      if (directMode !== 'ok') throw new Error('Vault 需要重新授權');
+      directWrites.push({ path, content });
+    },
+    async removeFile(path) {
+      if (directMode !== 'ok') throw new Error('Vault 需要重新授權');
+      directDeletes.push(path);
+    }
+  };
 
   const chrome = {
     runtime: {
       lastError: null,
-      getManifest: () => ({ version: '1.7.0' }),
+      getManifest: () => ({ version: '1.8.0' }),
       onMessage: { addListener() {} }
     },
     storage: {
@@ -151,14 +224,19 @@ function loadBackground() {
     URL,
     ArrayBuffer,
     Date,
+    SP2OVaultAccess: directAccess,
+    importScripts() {},
     setTimeout,
     clearTimeout
   });
   vm.runInContext(readFileSync('background.js', 'utf8'), context);
   return {
     context,
+    directDeletes,
+    directWrites,
     requests,
     stored,
+    setDirectMode(mode) { directMode = mode; },
     setLocalMode(mode) { localMode = mode; }
   };
 }
@@ -177,6 +255,7 @@ const postData = {
 const filename = '2026-07-18_1100_圖片同步測試.md';
 const path = `個人創作/社群推文/${filename}`;
 const settings = {
+  storageMode: 'rest',
   apiKey: 'test-key',
   port: 27123,
   basePath: '個人創作/社群推文',
@@ -203,6 +282,61 @@ const imageOnlyFilename = background.context.generateFilename({
   timestamp: '2026-07-18T11:00:00+08:00'
 });
 assert.equal(imageOnlyFilename, '2026-07-18_1100_圖片貼文.md');
+assert.equal(background.context.resolveStorageMode({}), 'direct');
+assert.equal(background.context.resolveStorageMode({ apiKey: 'legacy-key' }), 'rest');
+assert.equal(background.context.resolveStorageMode({ storageMode: 'direct', apiKey: 'legacy-key' }), 'direct');
+
+const directBackground = loadBackground();
+const directSettings = {
+  storageMode: 'direct',
+  basePath: '個人創作/社群推文',
+  mediaPath: '附件/Social Post to Obsidian'
+};
+const directResult = await directBackground.context.savePostBundle(
+  { ...postData, media: [{ url: 'https://pbs.twimg.com/media/good.jpg', alt: '直接寫入圖片' }] },
+  path,
+  filename,
+  directSettings
+);
+assert.deepEqual(JSON.parse(JSON.stringify(directResult)), { savedMedia: 1, failedMedia: 0 });
+assert.equal(directBackground.directWrites.length, 2);
+assert.match(
+  directBackground.directWrites[0].path,
+  /附件\/Social Post to Obsidian\/2026-07-18_1100_圖片同步測試\/image-01\.jpg$/
+);
+assert.equal(directBackground.directWrites[1].path, path);
+assert.match(directBackground.directWrites[1].content, /!\[直接寫入圖片\]/);
+
+directBackground.stored.storageMode = 'direct';
+directBackground.stored.basePath = '個人創作/社群推文';
+await directBackground.context.handleSaveDraft({
+  content: '直接暫存草稿',
+  platform: 'x',
+  timestamp: '2026-07-18T11:01:00+08:00'
+}, null);
+assert.equal(directBackground.directWrites.at(-1).path, '個人創作/社群推文/_草稿_Twitter.md');
+assert.match(directBackground.directWrites.at(-1).content, /直接暫存草稿/);
+
+await directBackground.context.deleteVaultFile('個人創作/社群推文/_草稿_Twitter.md', directSettings);
+assert.deepEqual(directBackground.directDeletes, ['個人創作/社群推文/_草稿_Twitter.md']);
+
+directBackground.setDirectMode('permission');
+await directBackground.context.saveWithQueueFallback(
+  path,
+  filename,
+  { ...postData, media: [] },
+  directSettings,
+  null
+);
+assert.equal(directBackground.stored.offlineQueue.length, 1);
+assert.equal(directBackground.stored.offlineQueue[0].data.content, postData.content);
+
+directBackground.stored.storageMode = 'direct';
+directBackground.stored.mediaPath = '附件/Social Post to Obsidian';
+directBackground.setDirectMode('ok');
+await directBackground.context.retryOfflineQueue();
+assert.deepEqual(JSON.parse(JSON.stringify(directBackground.stored.offlineQueue)), []);
+assert.equal(directBackground.stored.recentSaves[0].filename, filename);
 
 background.setLocalMode('offline');
 await background.context.saveWithQueueFallback(
