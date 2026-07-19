@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800">
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#ded9d2" stroke-width="1" opacity=".44"/>
+    </pattern>
+    <filter id="shadow" x="-30%" y="-20%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#2b2433" flood-opacity=".18"/>
+    </filter>
+    <linearGradient id="wash" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#f8f6f2"/>
+      <stop offset="1" stop-color="#efeaf7"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="800" fill="url(#wash)"/>
+  <rect width="1280" height="800" fill="url(#grid)"/>
+  <circle cx="1188" cy="54" r="250" fill="none" stroke="#c9b9e8" stroke-width="2" opacity=".55"/>
+  <circle cx="58" cy="766" r="230" fill="none" stroke="#dfcda8" stroke-width="2" opacity=".45"/>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Noto Sans TC', sans-serif">
+    <g transform="translate(72 62)">
+      <rect width="50" height="50" rx="14" fill="#27232d"/>
+      <path d="M12 13h26a5 5 0 0 1 5 5v14a5 5 0 0 1-5 5H25l-8 7v-7h-5a5 5 0 0 1-5-5V18a5 5 0 0 1 5-5Z" fill="#fffdfa"/>
+      <path d="M25 19v11m-5-5 5 5 5-5" fill="none" stroke="#6e56b3" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="66" y="23" fill="#28242e" font-size="20" font-weight="750">Social Post to Obsidian</text>
+      <text x="66" y="44" fill="#746d7b" font-size="11" font-weight="650" letter-spacing="1.5">LOCAL-FIRST · OPEN SOURCE · CHROME MV3</text>
+    </g>
+
+    <g transform="translate(76 176)">
+      <rect width="178" height="31" rx="15.5" fill="#eee8fa" stroke="#d9cfee"/>
+      <circle cx="18" cy="15.5" r="4.5" fill="#397a5b"/>
+      <text x="32" y="20" fill="#5e4b94" font-size="12" font-weight="700">X・Threads → Obsidian</text>
+
+      <text y="100" fill="#25222b" font-size="58" font-weight="820" letter-spacing="-2">發完就收好。</text>
+      <text y="148" fill="#5e5966" font-size="24" font-weight="600">貼文、串文與圖片，自動成為</text>
+      <text y="184" fill="#5e5966" font-size="24" font-weight="600">自己的 Markdown 資產。</text>
+
+      <g transform="translate(0 238)">
+        <rect width="280" height="54" rx="14" fill="#fffdf9" stroke="#ddd6cd"/>
+        <circle cx="27" cy="27" r="10" fill="#e7f2eb"/>
+        <path d="m22 27 4 4 7-9" fill="none" stroke="#397a5b" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="50" y="33" fill="#302b36" font-size="15" font-weight="700">發佈成功後自動備份</text>
+      </g>
+      <g transform="translate(0 308)">
+        <rect width="280" height="54" rx="14" fill="#fffdf9" stroke="#ddd6cd"/>
+        <circle cx="27" cy="27" r="10" fill="#eee8fa"/>
+        <path d="M22 23h10M22 27h8M22 31h10" fill="none" stroke="#6e56b3" stroke-width="2" stroke-linecap="round"/>
+        <text x="50" y="33" fill="#302b36" font-size="15" font-weight="700">單則與連續串文都支援</text>
+      </g>
+      <g transform="translate(0 378)">
+        <rect width="280" height="54" rx="14" fill="#fffdf9" stroke="#ddd6cd"/>
+        <circle cx="27" cy="27" r="10" fill="#f4ecd9"/>
+        <path d="M27 20v14m-5-8 5-6 5 6" fill="none" stroke="#8b672e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="50" y="33" fill="#302b36" font-size="15" font-weight="700">本機處理，沒有追蹤分析</text>
+      </g>
+    </g>
+
+    <g filter="url(#shadow)">
+      <rect x="796" y="65" width="428" height="670" rx="32" fill="#fffdf9" stroke="#d9d1c8" stroke-width="2"/>
+      <rect x="820" y="89" width="380" height="600" rx="17" fill="#f6f3ee"/>
+      <image href="../popup-ui-v2.4.0.png" x="820" y="89" width="380" height="600"/>
+      <rect x="955" y="708" width="110" height="7" rx="3.5" fill="#d7d0c8"/>
+    </g>
+
+    <g transform="translate(554 666)">
+      <path d="M0 22h116" stroke="#6e56b3" stroke-width="3" stroke-linecap="round"/>
+      <path d="m105 11 11 11-11 11" fill="none" stroke="#6e56b3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="0" y="1" fill="#6e56b3" font-size="12" font-weight="750" letter-spacing="1">REAL POPUP UI</text>
+    </g>
+  </g>
+</svg>

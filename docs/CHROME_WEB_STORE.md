@@ -1,6 +1,6 @@
 # Chrome Web Store 發布指南
 
-本文件整理 `v2.2.0` 的上架文案、權限理由、隱私揭露、Native Helper 測試方式與送審清單。Chrome 政策與 Dashboard 欄位會改變，實際送審前仍須重新核對官方的 [Program Policies](https://developer.chrome.com/docs/webstore/program-policies/policies)、[Prepare your extension](https://developer.chrome.com/docs/webstore/prepare) 與 [Privacy practices](https://developer.chrome.com/docs/webstore/cws-dashboard-privacy/)。
+本文件整理 `v2.4.0` 的上架文案、權限理由、隱私揭露、Native Helper 測試方式與送審清單。Chrome 政策與 Dashboard 欄位會改變，實際送審前仍須重新核對官方的 [Program Policies](https://developer.chrome.com/docs/webstore/program-policies/policies)、[Prepare your extension](https://developer.chrome.com/docs/webstore/prepare) 與 [Privacy practices](https://developer.chrome.com/docs/webstore/cws-dashboard-privacy/)。本次可直接上傳的最終文案與素材清單見 [`assets/store/publish-v2.4.0/LISTING.md`](../assets/store/publish-v2.4.0/LISTING.md)。
 
 ## 1. 目前發布狀態
 
@@ -14,11 +14,11 @@ Repository 已具備：
 
 發布者仍須在 Dashboard 完成：
 
-1. 註冊 Developer account、支付一次性費用並開啟 Google Account 兩步驟驗證。
-2. 建立 item、取得固定 extension ID。
-3. 以正式商店 ID 實跑 `./native/install-host.sh <extension-id>`。
-4. 補上一張顯示目前 Popup 實際 UI 的 1280×800 screenshot。現有 `screenshot-overview.png` 是流程示意圖，適合當補充圖，不應作為唯一的實際體驗截圖。
-5. 提供可公開存取的隱私權政策 URL，並確認開發者聯絡信箱有效。
+1. 已建立 Chrome Web Store item；固定 extension ID 為 `jdfempgjnmdlokacfjmnipihhghcnomb`。
+2. 以正式商店 ID 實跑 `./native/install-host.sh jdfempgjnmdlokacfjmnipihhghcnomb`。
+3. 建立公開 GitHub `v2.4.0` Release，讓 reviewer 可取得同版本 Helper。
+4. 上傳 `assets/store/publish-v2.4.0/` 的三張 1280×800 screenshot、small promo 與 marquee promo。
+5. 提供可公開存取的隱私權政策 URL，並確認開發者聯絡信箱與兩步驟驗證有效。
 
 ## 2. 建立與辨識發布檔案
 
@@ -32,8 +32,8 @@ node tests/media-sync.test.mjs
 
 | 檔案 | 用途 |
 | --- | --- |
-| `dist/social-post-to-obsidian-v2.2.0.zip` | 上傳 Chrome Web Store，也供 GitHub 手動安裝 |
-| `dist/social-post-to-obsidian-helper-v2.2.0-macos.zip` | 商店版 macOS 使用者另行安裝 Native Helper |
+| `dist/social-post-to-obsidian-v2.4.0.zip` | 上傳 Chrome Web Store，也供 GitHub 手動安裝 |
+| `dist/social-post-to-obsidian-helper-v2.4.0-macos.zip` | 商店版 macOS 使用者另行安裝 Native Helper |
 | `dist/SHA256SUMS` | GitHub Release 下載驗證 |
 
 只把 extension ZIP 上傳 Chrome Web Store。ZIP 根目錄已直接包含 `manifest.json`；Helper ZIP 與 checksum 只放 GitHub Release。
@@ -144,10 +144,11 @@ Dashboard 若要求逐項說明，可使用下列文案：
 | 素材 | 檔案 | 狀態 |
 | --- | --- | --- |
 | Store icon 128×128 | `icons/icon128.png` | 已備妥 |
-| Actual UI screenshot 1280×800 | 尚待發布者以乾淨測試資料擷取 | 送審前必做 |
-| Workflow infographic 1280×800 | `assets/store/screenshot-overview.png` | 可作第二張補充圖 |
-| Small promo 440×280 | `assets/store/small-promo.png` | 已備妥 |
-| Marquee promo 1400×560 | 未提供 | 選填 |
+| Actual UI screenshot 1280×800 | `assets/store/publish-v2.4.0/01-popup.png` | 已用隔離的乾淨展示資料產生 |
+| Markdown output 1280×800 | `assets/store/publish-v2.4.0/02-markdown.png` | 已備妥 |
+| Workflow infographic 1280×800 | `assets/store/publish-v2.4.0/03-workflow.png` | 已備妥 |
+| Small promo 440×280 | `assets/store/publish-v2.4.0/small-promo.png` | 已備妥 |
+| Marquee promo 1400×560 | `assets/store/publish-v2.4.0/marquee-promo.png` | 已備妥，選填 |
 
 實際 UI screenshot 必須使用乾淨的隔離 Chrome profile，不含真實 Vault 名稱、API Key、私人貼文或個人資料。截圖需 full bleed、方角，並在縮成 640×400 後仍可讀。
 
@@ -160,8 +161,8 @@ This extension has one purpose: back up the reviewer's own X or Threads posts to
 
 Recommended macOS test path:
 1. Download the matching macOS helper ZIP from the GitHub Release linked on the listing.
-2. Copy this item's 32-character extension ID from chrome://extensions.
-3. Run: ./native/install-host.sh <extension-id>
+2. Use this item's 32-character extension ID: jdfempgjnmdlokacfjmnipihhghcnomb.
+3. Run: ./native/install-host.sh jdfempgjnmdlokacfjmnipihhghcnomb
 4. Reload the extension, open the popup, choose a folder containing .obsidian, and save settings.
 5. Open X or Threads, compose a test post, and verify the generated Markdown in the selected Vault.
 

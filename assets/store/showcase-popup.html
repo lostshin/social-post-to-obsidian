@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=380, initial-scale=1">
+  <title>Social Post to Obsidian — Store Screenshot State</title>
+  <style>
+    html,
+    body {
+      width: 380px;
+      height: 600px;
+      margin: 0;
+      overflow: hidden;
+      background: #f6f3ee;
+    }
+
+    iframe {
+      display: block;
+      width: 380px;
+      height: 600px;
+      border: 0;
+    }
+  </style>
+</head>
+<body>
+  <iframe id="popup" src="../../popup/popup.html" title="Social Post to Obsidian popup"></iframe>
+  <script>
+    const frame = document.getElementById('popup');
+
+    function activityItem(doc, filename, meta) {
+      const item = doc.createElement('li');
+      item.innerHTML = `
+        <a class="activity-open-link" href="#">
+          <span class="activity-copy">
+            <span class="activity-filename"></span>
+            <small></small>
+          </span>
+          <span class="activity-open-icon" aria-hidden="true">↗</span>
+        </a>
+        <button type="button" class="activity-delete-btn">刪</button>
+      `;
+      item.querySelector('.activity-filename').textContent = filename;
+      item.querySelector('small').textContent = meta;
+      return item;
+    }
+
+    frame.addEventListener('load', () => {
+      const doc = frame.contentDocument;
+      doc.getElementById('version').textContent = 'v2.4.0';
+      doc.getElementById('connDot').className = 'dot ok';
+      doc.getElementById('connText').textContent = '已連接：創作筆記';
+      doc.getElementById('settingsPanel').open = false;
+      doc.getElementById('vaultName').textContent = '創作筆記';
+
+      const draftSection = doc.getElementById('draftSection');
+      const draftList = doc.getElementById('draftList');
+      draftSection.hidden = false;
+      draftList.replaceChildren(
+        activityItem(doc, '_草稿_Twitter.md', 'Twitter/X · 最後暫存 14:32')
+      );
+
+      const recentList = doc.getElementById('recentList');
+      recentList.replaceChildren(
+        activityItem(doc, '2026-07-19_1428_把貼文留在自己的知識庫.md', 'Twitter/X · 14:28'),
+        activityItem(doc, '2026-07-19_1356_三則串文的完整備份.md', 'Threads · 13:56'),
+        activityItem(doc, '2026-07-19_1120_今天整理出的產品想法.md', 'Twitter/X · 11:20')
+      );
+    });
+  </script>
+</body>
+</html>
