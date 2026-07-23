@@ -7,19 +7,21 @@
 - Extension ID：`jdfempgjnmdlokacfjmnipihhghcnomb`
 - Name：`Social Post to Obsidian`
 - Version：`2.4.2`
-- Category：`Productivity`
+- Category：`Tools`（既有已發布項目鎖定，Dashboard 不允許改為 Productivity）
 - Primary language：`中文（繁體）`
-- Secondary locale：`English`
+- Secondary locale：`v2.4.2` 未提供；下方英文文案保留給加入 `_locales` 的後續版本
 - Visibility：`Public`
 - Regions：`All regions`
 
 ## 中文（繁體，主要語系）
 
-### 摘要
+### 摘要（後續 localized package）
 
 ```text
 直接把 X（Twitter）與 Threads 當成筆記軟體。貼文、串文與靜態圖片會自動存進 Obsidian，不用複製貼上，也不用按擷取按鈕；特別適合想減少工具切換與寫作阻力的 AuDHD 族群。
 ```
+
+`v2.4.2` 的 Name／Summary 由 `manifest.json` 提供，Dashboard 唯讀；本版仍顯示 manifest 內的既有摘要。要套用上方摘要與英文副語系，必須在後續版本加入 `_locales` 並上傳新套件。
 
 ### 詳細說明
 
@@ -64,7 +66,7 @@ macOS 使用者可安裝開源 Native Helper，直接寫入自己的 Vault，不
 本專案是獨立開源工具，未受 X、Meta、Threads、Obsidian 或其關係企業贊助、認可或維護。
 ```
 
-## English（次要語系）
+## English（後續 localized package）
 
 ### Summary
 
@@ -120,26 +122,20 @@ This is an independent open-source project and is not sponsored, endorsed, or ma
 ### Reviewer note
 
 ```text
-Version 2.4.2 updates Threads media capture to support the current official web publishing endpoints:
+v2.4.2 updates Threads media capture for current endpoints: configure_text_only_post, configure_text_post_app_feed, and configure_text_post_app_sidecar. It accepts permalink-based responses and selects the largest static image. No permissions, data practices, Helper, or remote code changed.
 
-- configure_text_only_post
-- configure_text_post_app_feed
-- configure_text_post_app_sidecar
-
-It also accepts the current permalink-based response shape and preserves the largest available static-image candidate. No Chrome permissions, host permissions, data-use practices, or remote-code behavior have changed. The Native Helper remains version 1.1.3.
-
-Recommended macOS test path:
-1. Download the matching macOS helper ZIP from the GitHub Release.
-2. Run: ./native/install-host.sh jdfempgjnmdlokacfjmnipihhghcnomb
-3. Reload the extension, open the popup, choose a folder containing .obsidian, and save settings.
-4. Publish a test post on X or Threads and verify the generated Markdown in the selected Vault.
-
-Alternative test path on any OS:
-1. Install the Obsidian Local REST API community plugin.
-2. Select Local REST API in the popup and enter the local API key and port.
-
-No developer-operated server, paid account, analytics service, or remote code is used. Reviewers may use their own X or Threads test account.
+macOS test: get the Helper from the GitHub Release; run ./native/install-host.sh jdfempgjnmdlokacfjmnipihhghcnomb; choose a Vault in the popup; publish on X or Threads; verify the Markdown.
 ```
+
+Dashboard 實測上限為 500 字元；以上內容共 482 字元，已於 2026-07-23 儲存。
+
+## Dashboard 狀態（2026-07-23）
+
+- Published package：`v2.4.0`
+- Draft package：`v2.4.2`
+- Submission：`待審查`
+- Publishing：審查通過後自動發布
+- Anonymous delivery：公開頁仍導向 `empty-title`，update service 仍回 `error-unknownApplication`
 
 ## 上傳資料
 

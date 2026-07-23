@@ -15,10 +15,11 @@
 - Extension `v2.4.2`；Native Host `v1.1.3`。Tag `v2.4.2` 固定在 commit `8569607`；GitHub Release、兩個 ZIP 與 `SHA256SUMS` 已公開並驗證。
 - `main` 在 tag 後另有文件 commit：繁中 `README.md` 是 GitHub 主頁，英文在 `README.en.md`；不要為了讓 tag 帶到新文件而移動或重打已公開 tag。
 - `v2.4.2` 已由使用者完成 Threads 單圖發文 → Obsidian 真實 E2E。X 多圖、Threads 多圖仍未分別驗收，不得宣稱全通過。
-- Web Store item ID：`jdfempgjnmdlokacfjmnipihhghcnomb`。語系雖顯示核准，但 2026-07-23 公開頁仍「無法存取」，update service 回 `error-unknownApplication`；`v2.4.2` 尚未上傳／送審。
+- Web Store item ID：`jdfempgjnmdlokacfjmnipihhghcnomb`。Dashboard 顯示公開版 `v2.4.0`；`v2.4.2` 已於 2026-07-23 上傳並提交，狀態「待審查」，核准後自動發布。
+- 送審後公開頁仍導向 `empty-title`，update service 仍回 `error-unknownApplication`；不得把 Dashboard 的「已發布－公開」或「待審查」當成匿名使用者已可安裝。
 - 只有 update service 回 `status="ok"`、公開頁出現「加到 Chrome」且可從商店安裝，才能宣稱已公開上架；Dashboard 語系 `Approved` 不等於已發布。
 - Web Store 上傳用 GitHub Release 的 `social-post-to-obsidian-v2.4.2.zip`；Helper ZIP 不上傳。正式下載副本在 `dist/release-v2.4.2/`。
-- `v2.4.2` 雙語商店文案與 reviewer note 在 `assets/store/publish-v2.4.2/LISTING.md`；權限理由、Privacy practices 與圖片素材沿用 `publish-v2.4.0/`。
+- `v2.4.2` 已儲存繁中詳細說明與 482/500 字元 reviewer note；權限理由、Privacy practices 與圖片素材沿用 `publish-v2.4.0/`。英文與新摘要保留給含 `_locales` 的後續版本。
 - 舊設定 `storageMode: 'direct'` 會遷移為 `native`；background／popup 的 `'direct'` 相容分支仍是活碼。
 
 ## 公開文件與文案同步
@@ -26,7 +27,7 @@
 - 使用者說「整體文案」時，不可只改深層 `LISTING.md`：同步檢查 `README.md`、`README.en.md`、GitHub About description、Store listing；必要連動才改 `INSTALL.md`／`PRIVACY.md`。
 - 對外語系固定：台灣繁中為主、英文為次；AuDHD 寫成「AuDHD 族群／AuDHD community」，不當產品形容詞或醫療效果宣稱。
 - 行銷順序：先說痛點（發文後還要擷取、切換、整理）→ 解法（發布後自動轉 Markdown）→ 效益（降低寫作阻力、串文完整留在 Vault）→ 功能與隱私證據。
-- Chrome Web Store 上限：Name 45、Summary 132、Detailed description 8000 字元；修改後用 code point 計數。若要求去 AI 味，套用 `humanize`；繁中再用 `dewesternise`。
+- 目前 Dashboard 的詳細說明上限 16,000、測試操作說明 500 字元；Name／Summary 來自 manifest，頁面唯讀。英文副語系需先在新套件加入 `_locales`，不能只靠 Dashboard。若要求去 AI 味，套用 `humanize`；繁中再用 `dewesternise`。
 - `README.md` 是 GitHub 首頁；`README.en.md` 是英文版；`README.zh-TW.md` 只保留相容入口。改檔名後用 `rg` 更新所有相對連結。
 - GitHub About 不是 repository 檔案；README 改完仍須用 `gh repo view/edit` 讀回 description。最後再抓公開 GitHub 頁，確認實際渲染而非只看 local／raw。
 
@@ -83,6 +84,7 @@
 - Release ZIP 會因封裝 timestamp 與本機預製 ZIP 有不同 hash；下載 Release 三個 assets，使用該 Release 的 `SHA256SUMS` 驗證，不拿本機舊 hash 硬比。
 - 商店只上傳 extension ZIP，且 `manifest.json` 必須在 ZIP 根目錄；Helper ZIP 與 checksum 只放 GitHub Release。禁止 remote JavaScript、`eval()`、`new Function()`。
 - Web Store Dashboard／Publish API 沒有已登入 session 或 OAuth credential 時，只做到可驗證的 handoff，不碰日常 Chrome profile、不要求帳密，也不宣稱已上傳。
+- Dashboard 既有類別為「工具」且其他選項在已發布項目中 disabled；不要為了改成 Productivity 重傳版本。AppleScript fallback 只在使用者明確授權並手動開啟 Chrome Apple Events JavaScript 後使用，逐次用 item ID 解析分頁，完成後提醒關閉權限。
 - 商店名稱維持 `Social Post to Obsidian`，避免為雙語標題無必要 bump／重傳。Official URL 只有驗證自有網域後才填。
 - 若審查拒絕，保存完整通知與 policy ID，先對照程式、`PRIVACY.md` 與 `LISTING.md`，不要猜測修改後反覆送審。
 
