@@ -64,4 +64,4 @@ Chrome Web Store 只能安裝擴充功能，不能代替使用者安裝 Native H
 
    此指令會移除 Helper 與 Native Messaging manifest，但保留 Vault 選擇設定。若也要清除 Helper 設定，使用 `./native/uninstall-host.sh --purge`。
 
-遇到問題時請先查看 [繁中 README 的已知限制](README.zh-TW.md#已知限制)，再到 [GitHub Issues](https://github.com/lostshin/social-post-to-obsidian/issues) 回報；不要貼出 API Key、私人貼文或完整平台回應。
+遇到問題時請先查看 [README 的已知限制](README.md#已知限制)，再到 [GitHub Issues](https://github.com/lostshin/social-post-to-obsidian/issues) 回報；不要貼出 API Key、私人貼文或完整平台回應。

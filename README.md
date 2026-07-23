@@ -5,11 +5,11 @@
 <h1 align="center">Social Post to Obsidian</h1>
 
 <p align="center">
-  <strong>English</strong> · <a href="README.zh-TW.md">繁體中文</a>
+  <strong>繁體中文</strong> · <a href="README.en.md">English</a>
 </p>
 
 <p align="center">
-  Automatically archive your X and Threads posts—including threads and images—to your local Obsidian Vault.
+  直接把 X（Twitter）與 Threads 當成筆記軟體。發文後自動存進 Obsidian，不用複製貼上，也不用按擷取按鈕。
 </p>
 
 <p align="center">
@@ -19,74 +19,84 @@
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6E56B3.svg"></a>
 </p>
 
-![Social Post to Obsidian workflow demo](assets/demo.gif)
+![Social Post to Obsidian 工作流程展示](assets/demo.gif)
 
-The 20-second demo uses the actual extension popup with isolated sample data; it does not contain private account content. A high-resolution version is available as [MP4](assets/demo.mp4).
+這段 20 秒展示使用真實的擴充功能 Popup 與隔離範例資料，不含私人帳號內容；另提供高畫質 [MP4](assets/demo.mp4)。
 
-## Why this exists
+## 直接把社群媒體當成筆記軟體
 
-Your writing should not live only on someone else's platform. Social Post to Obsidian quietly keeps a local Markdown copy whenever you publish on X or Threads—without sending your posts to a developer-operated server.
+你已經在 X（Twitter）或 Threads 寫下想法，為什麼發文後還要再整理一次？
 
-- Saves published posts as Markdown notes automatically.
-- Preserves multi-post threads as structured, copyable sections.
-- Downloads static images into a configurable Vault attachment folder.
-- Keeps source URLs, timestamps, reply context, and quoted-post details.
-- Auto-saves drafts, clears them after publishing, and retries queued saves after connection failures.
-- Lets you preview, open, and delete recent notes from the extension popup.
-- Uses no third-party JavaScript, developer backend, telemetry, or ads.
+Social Post to Obsidian 會在貼文發佈後，自動把文字、串文與靜態圖片整理成 Markdown，存進你自己的 Obsidian Vault。短短一句會存，一路寫下去的長串文也會存，而且保留原本順序。
 
-## Supported setups
+發文後，不必回頭按擷取、不必切到 Obsidian，也不必重新整理格式。你照原本的方式寫，筆記會自己存好。
 
-| Write method | Supported environment | Requirements |
+寫作阻力常常出現在寫完之後：切到另一個工具、按下擷取、調整格式，再確認有沒有存好。對 AuDHD 族群而言，這些額外步驟更可能打斷思路，也容易讓「等等再整理」最後變成沒有整理。
+
+社群平台負責讓你開始寫，Obsidian 負責讓內容留下來。你不用另外養成一套筆記習慣，也少了一個中斷寫作的地方。
+
+## 你會得到什麼
+
+- 發佈 X 或 Threads 貼文後，自動建立 Markdown 筆記。
+- 單則貼文、連續串文與靜態圖片都會保存；串文維持原本順序。
+- 每則內容都有獨立、可直接複製的 Markdown code block。
+- 來源網址、發佈時間、回覆關係、引用貼文與串文數量會一起留下來。
+- 撰寫時自動暫存草稿；Obsidian 暫時無法使用時，恢復後會自動補存。
+- Popup 可預覽、開啟或刪除草稿與最近存檔。
+- 沒有第三方 JavaScript、開發者後端、遙測或廣告。
+
+## 支援環境與寫入方式
+
+| 寫入方式 | 平台 | 需要什麼 |
 | --- | --- | --- |
-| Native Helper (recommended) | macOS + Google Chrome | Included open-source Native Helper; no Obsidian plugin or API key |
-| Local REST API | macOS, Windows, Linux + Google Chrome | Obsidian community plugin [Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api) and an API key |
+| 本機 Helper（預設、推薦） | macOS + Google Chrome | 隨附的開源 Native Helper；不需要 Obsidian 外掛或 API Key |
+| Local REST API | macOS、Windows、Linux + Google Chrome | Obsidian 社群外掛 [Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api) 與 API Key |
 
-Both methods require [Obsidian](https://obsidian.md/). The Native Helper currently supports macOS only; use Local REST API on other operating systems.
+兩種模式都需要 [Obsidian](https://obsidian.md/)。本機 Helper 目前只支援 macOS；其他系統請在 Popup 選擇 Local REST API。
 
-## Install
+## 安裝
 
-### Install from the Chrome Web Store
+完整步驟、更新方式與移除方法請見 [INSTALL.md](INSTALL.md)。以下是最短流程。
 
-1. Install [Social Post to Obsidian from the Chrome Web Store](https://chromewebstore.google.com/detail/social-post-to-obsidian/jdfempgjnmdlokacfjmnipihhghcnomb).
-2. To use the recommended Native Helper on macOS, download `social-post-to-obsidian-helper-v*-macos.zip` from the matching [GitHub Release](https://github.com/lostshin/social-post-to-obsidian/releases).
-3. Extract the archive and run:
+### 從 GitHub Release 手動安裝
 
-   ```bash
-   ./native/install-host.sh jdfempgjnmdlokacfjmnipihhghcnomb
-   ```
-
-Chrome Web Store extensions cannot install local programs automatically. If you prefer not to install the Helper, choose Local REST API in the popup instead.
-
-### Install manually from a GitHub Release
-
-1. Download and extract `social-post-to-obsidian-v*.zip` from [Releases](https://github.com/lostshin/social-post-to-obsidian/releases) into a permanent folder.
-2. Open `chrome://extensions/`, enable **Developer mode**, choose **Load unpacked**, and select the folder containing `manifest.json`.
-3. On macOS, install the Native Helper from that folder:
+1. 從 [Releases](https://github.com/lostshin/social-post-to-obsidian/releases) 下載 `social-post-to-obsidian-v*.zip` 並解壓縮到固定資料夾。
+2. 開啟 `chrome://extensions/` → 啟用「開發人員模式」→「載入未封裝項目」→ 選擇含 `manifest.json` 的資料夾。
+3. macOS 使用者若採本機 Helper，在該資料夾執行：
 
    ```bash
    ./native/install-host.sh
    ```
 
-4. Reload the extension, open its popup, and choose your Vault.
+4. 在 `chrome://extensions/` 重新載入外掛，開啟 Popup，按「選擇 Vault」。
 
-Chrome cannot load a ZIP directly. Keep the extracted folder in the same location when updating a manual installation, or the extension ID, settings, and Native Helper authorization may change.
+Chrome 不能直接載入 ZIP。更新手動安裝版時也要保留相同資料夾位置，否則 extension ID、既有設定與 Helper 授權可能改變。
 
-Detailed update and removal instructions are currently available in [Traditional Chinese](INSTALL.md).
+### 從 Chrome Web Store 安裝
 
-## Configure and use
+1. 從 [Chrome Web Store](https://chromewebstore.google.com/detail/social-post-to-obsidian/jdfempgjnmdlokacfjmnipihhghcnomb) 安裝擴充功能。
+2. 若要使用預設的本機 Helper，從同版本 [GitHub Release](https://github.com/lostshin/social-post-to-obsidian/releases) 下載 `social-post-to-obsidian-helper-v*-macos.zip`。
+3. 解壓縮後執行：
 
-1. Pin the extension to the Chrome toolbar and open its popup.
-2. Native Helper mode: choose the root folder of a Vault containing `.obsidian`.
-3. Local REST API mode: enter the API key and HTTP port `27123` or HTTPS port `27124`, then test the connection.
-4. Adjust the note and media paths if needed, and save the settings.
-5. Refresh any open X or Threads tabs, then write and publish as usual.
+```bash
+./native/install-host.sh jdfempgjnmdlokacfjmnipihhghcnomb
+```
 
-The popup separates unpublished drafts from recently saved posts. Opening a recent item jumps to the note in Obsidian; deleting it removes the Vault note, not the original social post.
+Chrome Web Store 基於安全限制不會自動執行本機安裝程式。若不想安裝 Helper，可改用 Local REST API 模式。
 
-## What gets saved
+## 設定與使用
 
-The default note folder is `個人創作/社群推文`, and the default media folder is `附件/Social Post to Obsidian`:
+1. 將擴充功能固定在 Chrome 工具列並開啟 Popup。
+2. 本機 Helper 模式：按「選擇 Vault」，選擇含 `.obsidian` 的 Vault 根目錄。
+3. Local REST API 模式：輸入 API Key、HTTP port `27123` 或 HTTPS port `27124`，再測試連線。
+4. 視需要調整筆記路徑與圖片路徑，按「儲存設定」。
+5. 重新整理已開啟的 X／Threads 分頁，照平常方式撰寫並發佈貼文。
+
+Popup 的「未發佈草稿」與「最近儲存」可顯示內容預覽；箭頭會開啟 Obsidian 筆記，垃圾桶只刪除 Vault 筆記，不會刪除社群平台原文。
+
+## 儲存結果
+
+預設筆記路徑是 `個人創作/社群推文`，預設圖片路徑是 `附件/Social Post to Obsidian`：
 
 ```text
 個人創作/社群推文/
@@ -98,51 +108,51 @@ The default note folder is `個人創作/社群推文`, and the default media fo
     └── image-02.webp
 ```
 
-Notes use standard relative Markdown links that resolve from the note location. If an individual image download fails, the text note is still saved and keeps the remote image URL.
+Markdown 使用可從筆記位置解析的標準相對連結。若個別圖片下載失敗，文字筆記仍會儲存，該圖片則保留遠端網址。
 
-## Privacy and permissions
+## 權限與資料流
 
-All post data stays between services and software chosen by the user:
+擴充功能只在使用者自己的裝置與選定服務間處理資料：
 
 ```text
-X / Threads tab
+X／Threads 分頁
   → Chrome extension
-  → macOS Native Helper or 127.0.0.1 Local REST API
-  → your Obsidian Vault
+  → macOS Native Helper 或 127.0.0.1 Local REST API
+  → 使用者自己的 Obsidian Vault
 ```
 
-- `storage`: stores the write method, paths, optional REST API settings, offline queue, and recent-save metadata.
-- `nativeMessaging`: communicates with the user-installed macOS Helper.
-- `notifications`: reports a completed published-post save when the originating tab no longer exists.
-- `alarms`: retries the offline queue and maintains Vault activity state.
-- X and Threads access: handles only posts the user is drafting or has just published and their related source context.
-- X and Meta media CDN access: downloads static images from those posts.
-- `127.0.0.1`: connects to the local Obsidian REST API plugin only when that mode is selected.
+- `storage`：保存寫入模式、路徑、可選的 REST API 設定、離線佇列及最近存檔資訊。
+- `nativeMessaging`：在 macOS 與使用者自行安裝的本機 Helper 溝通。
+- `notifications`：原始分頁已關閉時回報正式貼文的存檔結果。
+- `alarms`：定期補存離線佇列與維護 Vault 狀態。
+- X／Threads 網站存取：只處理使用者正在撰寫或剛發佈的貼文及相關來源資訊。
+- X／Meta 圖片 CDN：下載該貼文中的靜態圖片。
+- `127.0.0.1`：只供使用者選擇 Local REST API 模式時連接本機 Obsidian 外掛。
 
-There is no developer-operated server, remote code, data sale, or data sharing. See the [Privacy Policy](PRIVACY.md) for details.
+專案沒有開發者營運的伺服器，不販售或分享資料，也不執行遠端程式碼。詳情見[隱私權政策](PRIVACY.md)。
 
-## Known limitations
+## 已知限制
 
-- The Native Helper currently supports macOS and Google Chrome only. Windows, Linux, and other Chromium browsers can use Local REST API or contribute platform support.
-- Only static images are downloaded; videos and animated GIFs are not synchronized.
-- Internal X and Threads APIs can change. Remove API keys, cookies, private post content, and full platform responses before reporting parser issues.
-- Threads image URLs use expiring signatures, so long offline periods may leave only remote URLs.
-- On an iCloud Vault, macOS may ask for permission to let Ruby or Chrome control Finder the first time a note is deleted.
+- Native Helper 目前只支援 macOS 與 Google Chrome；Windows、Linux 或其他 Chromium 瀏覽器請使用 Local REST API，或自行貢獻對應安裝支援。
+- 目前只同步靜態圖片；影片與動態 GIF 不會下載。
+- X 與 Threads 的內部 API 可能改變。回報解析問題時請移除 API Key、cookies、私人貼文與完整平台回應。
+- Threads 圖片網址帶有時效簽章；離線過久後可能只能留下遠端網址。
+- iCloud Vault 首次刪除筆記時，macOS 可能要求允許 Ruby／Chrome 控制 Finder。
 
 ## Roadmap
 
-Project direction is tracked openly with the [`roadmap` label](https://github.com/lostshin/social-post-to-obsidian/issues?q=state%3Aopen%20label%3Aroadmap). Current explorations include:
+專案方向公開記錄在帶有 [`roadmap` label](https://github.com/lostshin/social-post-to-obsidian/issues?q=state%3Aopen%20label%3Aroadmap) 的 issues，目前探索項目包括：
 
-- [Native Helper support for Windows and Linux](https://github.com/lostshin/social-post-to-obsidian/issues/2)
-- [Chromium-based browser compatibility](https://github.com/lostshin/social-post-to-obsidian/issues/3)
-- [Local preservation of videos and animated GIFs](https://github.com/lostshin/social-post-to-obsidian/issues/4)
-- [Browser-level smoke tests for release packages](https://github.com/lostshin/social-post-to-obsidian/issues/5)
+- [Windows／Linux Native Helper](https://github.com/lostshin/social-post-to-obsidian/issues/2)
+- [Chromium 瀏覽器相容性](https://github.com/lostshin/social-post-to-obsidian/issues/3)
+- [影片與動態 GIF 的本機保存](https://github.com/lostshin/social-post-to-obsidian/issues/4)
+- [Release 套件的瀏覽器層 smoke tests](https://github.com/lostshin/social-post-to-obsidian/issues/5)
 
-Roadmap issues describe desired outcomes, not promised release dates. Evidence from real workflows takes priority over feature count.
+Roadmap issues 表示想解決的問題，不代表承諾發布日期；真實工作流程的驗證會優先於功能數量。
 
-## Development, testing, and releases
+## 開發、測試與發布
 
-The project uses native JavaScript, HTML, CSS, and macOS system Ruby. It has no build step or npm dependencies.
+本專案使用原生 JavaScript、HTML、CSS 與 macOS 系統 Ruby，不需要安裝 npm package。提交前執行：
 
 ```bash
 node scripts/validate-extension.mjs
@@ -151,20 +161,20 @@ node tests/media-sync.test.mjs
 git diff --check
 ```
 
-The packaging script creates:
+打包後 `dist/` 會包含：
 
-- `social-post-to-obsidian-v<version>.zip`: manual GitHub installation and Chrome Web Store package.
-- `social-post-to-obsidian-helper-v<version>-macos.zip`: macOS Helper for Store users.
-- `SHA256SUMS`: SHA-256 checksums for both archives.
+- `social-post-to-obsidian-v<version>.zip`：GitHub 手動安裝與 Chrome Web Store 上傳套件。
+- `social-post-to-obsidian-helper-v<version>-macos.zip`：商店版使用者需要的 macOS Helper。
+- `SHA256SUMS`：兩個 ZIP 的 SHA-256 checksum。
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) before contributing. Chrome Web Store fields, permission justifications, and review instructions are documented in [docs/CHROME_WEB_STORE.md](docs/CHROME_WEB_STORE.md).
+貢獻方式見 [CONTRIBUTING.md](CONTRIBUTING.md)，Chrome Web Store 欄位、權限理由與審查步驟見 [docs/CHROME_WEB_STORE.md](docs/CHROME_WEB_STORE.md)。
 
-## Support and license
+## 回報與授權
 
-- Bugs and feature requests: [GitHub Issues](https://github.com/lostshin/social-post-to-obsidian/issues)
-- Security reports: [SECURITY.md](SECURITY.md)
-- License: [MIT](LICENSE)
+- Bug 與功能建議：[GitHub Issues](https://github.com/lostshin/social-post-to-obsidian/issues)
+- 安全漏洞：[SECURITY.md](SECURITY.md)
+- 授權：[MIT License](LICENSE)
 
-This is an independent open-source project and is not sponsored, endorsed, or maintained by X, Meta, Threads, Obsidian, or their affiliates.
+本專案是獨立開源工具，未受 X、Meta、Threads、Obsidian 或其關係企業贊助、認可或維護。
 
-If this tool improves your writing workflow, consider starring the repository so more creators who care about content ownership can discover it.
+如果這個工具讓你少一次切換、多留下幾篇文章，歡迎替 repository 點一顆星，讓更多想降低寫作阻力的人看見它。
