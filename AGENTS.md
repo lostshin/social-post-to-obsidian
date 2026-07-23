@@ -18,7 +18,6 @@
 - Web Store item ID：`jdfempgjnmdlokacfjmnipihhghcnomb`。Dashboard 顯示公開版 `v2.4.0`；`v2.4.2` 已於 2026-07-23 上傳並提交，狀態「待審查」，核准後自動發布。
 - 送審後公開頁仍導向 `empty-title`，update service 仍回 `error-unknownApplication`；不得把 Dashboard 的「已發布－公開」或「待審查」當成匿名使用者已可安裝。
 - 只有 update service 回 `status="ok"`、公開頁出現「加到 Chrome」且可從商店安裝，才能宣稱已公開上架；Dashboard 語系 `Approved` 不等於已發布。
-- Web Store 上傳用 GitHub Release 的 `social-post-to-obsidian-v2.4.2.zip`；Helper ZIP 不上傳。正式下載副本在 `dist/release-v2.4.2/`。
 - `v2.4.2` 已儲存繁中詳細說明與 482/500 字元 reviewer note；權限理由、Privacy practices 與圖片素材沿用 `publish-v2.4.0/`。英文與新摘要保留給含 `_locales` 的後續版本。
 - 舊設定 `storageMode: 'direct'` 會遷移為 `native`；background／popup 的 `'direct'` 相容分支仍是活碼。
 
@@ -27,9 +26,19 @@
 - 使用者說「整體文案」時，不可只改深層 `LISTING.md`：同步檢查 `README.md`、`README.en.md`、GitHub About description、Store listing；必要連動才改 `INSTALL.md`／`PRIVACY.md`。
 - 對外語系固定：台灣繁中為主、英文為次；AuDHD 寫成「AuDHD 族群／AuDHD community」，不當產品形容詞或醫療效果宣稱。
 - 行銷順序：先說痛點（發文後還要擷取、切換、整理）→ 解法（發布後自動轉 Markdown）→ 效益（降低寫作阻力、串文完整留在 Vault）→ 功能與隱私證據。
-- 目前 Dashboard 的詳細說明上限 16,000、測試操作說明 500 字元；Name／Summary 來自 manifest，頁面唯讀。英文副語系需先在新套件加入 `_locales`，不能只靠 Dashboard。若要求去 AI 味，套用 `humanize`；繁中再用 `dewesternise`。
+- 若要求去 AI 味，套用 `humanize`；繁中再用 `dewesternise`。Web Store 欄位限制與語系規則見下一節。
 - `README.md` 是 GitHub 首頁；`README.en.md` 是英文版；`README.zh-TW.md` 只保留相容入口。改檔名後用 `rg` 更新所有相對連結。
 - GitHub About 不是 repository 檔案；README 改完仍須用 `gh repo view/edit` 讀回 description。最後再抓公開 GitHub 頁，確認實際渲染而非只看 local／raw。
+
+## Web Store 送審最短路徑
+
+1. 先核對發布者 `lô-kun-lîm` 與 item ID `jdfempgjnmdlokacfjmnipihhghcnomb`。若落在 `/devconsole/register`、要求同意協議或支付 $5，代表登入錯帳戶；不可代勾或付款。
+2. 只上傳 GitHub Release 的 `social-post-to-obsidian-vX.Y.Z.zip`；Helper ZIP 不上傳。先驗證 checksum 與 ZIP 根目錄的 `manifest.json`，上傳後以套件頁的 Draft version 讀回成功。
+3. 優先用 Chrome connector；失效時只有在使用者明確授權後才用 `control-chrome-with-applescript`。CWS 原生檔案選擇器不接受 DOM `.click()` 的非可信事件：用 DOM 聚焦「選取檔案」後送 trusted Return，再以 `Cmd+Shift+G` 選完整路徑；每步都重新用 item ID 解析分頁。
+4. Name／Summary 來自 manifest，Dashboard 唯讀；英文副語系需新套件加入 `_locales`。詳細說明上限 16,000、測試操作說明 500 字元；既有類別「工具」的其他選項在已發布項目中 disabled。
+5. 權限與資料用途未變就不重寫 Privacy practices。逐頁儲存並讀回欄位；送審對話框選「核准後自動發布」，最後以狀態頁「待審查」作為提交證據。
+6. Dashboard「已發布－公開」或語系 `Approved` 都不等於可交付。只有 update service `status="ok"`、匿名公開頁出現「加到 Chrome」且實際可安裝，才能宣稱已上架。
+7. AppleScript 工作完成後停止瀏覽器命令，提醒使用者手動關閉 Chrome「允許 Apple 事件的 JavaScript」。
 
 ## X／Threads 擷取契約
 
@@ -82,9 +91,7 @@
 - `release.yml` 在 `v*` tag push 後驗證 tag＝manifest version、自動測試／封裝／建立 Release；不要手動重複建 Release。
 - Tag 只能在對應 Release commit 建立一次；發布後的文件改在 `main`，不得移動、刪除或重建 tag 來改 Release 快照。
 - Release ZIP 會因封裝 timestamp 與本機預製 ZIP 有不同 hash；下載 Release 三個 assets，使用該 Release 的 `SHA256SUMS` 驗證，不拿本機舊 hash 硬比。
-- 商店只上傳 extension ZIP，且 `manifest.json` 必須在 ZIP 根目錄；Helper ZIP 與 checksum 只放 GitHub Release。禁止 remote JavaScript、`eval()`、`new Function()`。
-- Web Store Dashboard／Publish API 沒有已登入 session 或 OAuth credential 時，只做到可驗證的 handoff，不碰日常 Chrome profile、不要求帳密，也不宣稱已上傳。
-- Dashboard 既有類別為「工具」且其他選項在已發布項目中 disabled；不要為了改成 Productivity 重傳版本。AppleScript fallback 只在使用者明確授權並手動開啟 Chrome Apple Events JavaScript 後使用，逐次用 item ID 解析分頁，完成後提醒關閉權限。
+- 商店套件禁止 remote JavaScript、`eval()`、`new Function()`；Web Store 操作規則見上節。
 - 商店名稱維持 `Social Post to Obsidian`，避免為雙語標題無必要 bump／重傳。Official URL 只有驗證自有網域後才填。
 - 若審查拒絕，保存完整通知與 policy ID，先對照程式、`PRIVACY.md` 與 `LISTING.md`，不要猜測修改後反覆送審。
 
@@ -97,4 +104,4 @@
 - 其他圖片：parser media → CDN permission → binary PUT／Content-Type → 相對連結 → queue marker。
 - Popup 刪除：tracked path → message → framed Host response → 實體檔 → storage／UI。
 - Native Host：ping → 原始碼／安裝檔版本 → framed request → stderr → Chrome／unified log。
-- 發布：manifest version → tag → CI → Release assets／checksum → Web Store package → 隔離安裝。
+- 發布：manifest version → tag → CI → Release assets／checksum → Web Store Draft version → 待審查 → update service／匿名頁／隔離安裝。
