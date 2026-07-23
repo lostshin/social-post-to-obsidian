@@ -33,6 +33,53 @@ function loadCommon() {
 
 const common = loadCommon();
 
+function loadInterceptor(responseText) {
+  const messages = [];
+  class XMLHttpRequestStub {
+    open() {}
+    setRequestHeader() {}
+    send() {}
+    addEventListener() {}
+  }
+  const window = {
+    location: { origin: 'https://www.threads.com' },
+    postMessage(message) { messages.push(message); },
+    fetch: async () => ({
+      clone: () => ({ text: async () => responseText })
+    })
+  };
+  const context = vm.createContext({
+    URLSearchParams,
+    XMLHttpRequest: XMLHttpRequestStub,
+    window
+  });
+  vm.runInContext(readFileSync('content/interceptor.js', 'utf8'), context);
+  return { fetch: context.window.fetch, messages };
+}
+
+const threadsPublishInterceptor = loadInterceptor('{"status":"ok"}');
+for (const endpoint of [
+  '/api/v1/media/configure_text_only_post/',
+  '/api/v1/media/configure_text_post_app_feed/',
+  '/api/v1/media/configure_text_post_app_sidecar/'
+]) {
+  await threadsPublishInterceptor.fetch(endpoint, { method: 'POST' });
+}
+await threadsPublishInterceptor.fetch('/api/v1/media/upload_photo/', { method: 'POST' });
+await new Promise(resolve => setImmediate(resolve));
+assert.deepEqual(
+  threadsPublishInterceptor.messages.map(message => message.platform),
+  ['threads', 'threads', 'threads']
+);
+assert.deepEqual(
+  threadsPublishInterceptor.messages.map(message => message.requestUrl),
+  [
+    '/api/v1/media/configure_text_only_post/',
+    '/api/v1/media/configure_text_post_app_feed/',
+    '/api/v1/media/configure_text_post_app_sidecar/'
+  ]
+);
+
 function loadTwitterExtractor(nodes) {
   let pipelineConfig = null;
   const dialog = {
@@ -368,6 +415,64 @@ assert.deepEqual(JSON.parse(JSON.stringify(parsedThreads.media)), [
   { url: 'https://scontent.cdninstagram.com/second.webp', alt: '圖片 3' }
 ]);
 
+// Current threads.com publishing uses /api/v1/media/configure_text_post_app_feed/.
+// Its response may expose permalink and media without user.username.
+const threadsConfigureResponse = JSON.stringify({
+  media: {
+    pk: '989',
+    code: 'CONFIGURE123',
+    permalink: 'https://www.threads.com/@author/post/CONFIGURE123',
+    caption: { text: '現行發文端點圖片' },
+    media_type: 1,
+    accessibility_caption: '現行 Threads 圖片',
+    image_versions2: { candidates: [
+      { url: 'https://scontent.cdninstagram.com/configure-small.jpg', width: 320, height: 240 },
+      { url: 'https://scontent.cdninstagram.com/configure-large.jpg', width: 1440, height: 1080 }
+    ] }
+  },
+  status: 'ok'
+});
+
+const parsedThreadsConfigure = common.parseThreadsCreate(threadsConfigureResponse);
+assert.equal(parsedThreadsConfigure.url, 'https://www.threads.com/@author/post/CONFIGURE123');
+assert.equal(parsedThreadsConfigure.text, '現行發文端點圖片');
+assert.deepEqual(JSON.parse(JSON.stringify(parsedThreadsConfigure.media)), [
+  { url: 'https://scontent.cdninstagram.com/configure-large.jpg', alt: '現行 Threads 圖片' }
+]);
+
+// Threads can return an image embedded in a text post under linked_inline_media
+// instead of the top-level media fields.
+const threadsInlineMediaResponse = JSON.stringify({
+  data: {
+    create_text_post: {
+      post: {
+        pk: '988',
+        code: 'INLINE123',
+        user: { username: 'author' },
+        caption: { text: '內嵌圖片貼文' },
+        media_type: 19,
+        image_versions2: { candidates: [] },
+        text_post_app_info: {
+          linked_inline_media: {
+            pk: 'media-1',
+            media_type: 1,
+            accessibility_caption: '內嵌圖片',
+            image_versions2: { candidates: [
+              { url: 'https://scontent.cdninstagram.com/inline-small.jpg', width: 320, height: 240 },
+              { url: 'https://scontent.cdninstagram.com/inline-large.jpg', width: 1600, height: 1200 }
+            ] }
+          }
+        }
+      }
+    }
+  }
+});
+
+const parsedThreadsInlineMedia = common.parseThreadsCreate(threadsInlineMediaResponse);
+assert.deepEqual(JSON.parse(JSON.stringify(parsedThreadsInlineMedia.media)), [
+  { url: 'https://scontent.cdninstagram.com/inline-large.jpg', alt: '內嵌圖片' }
+]);
+
 function loadBackground() {
   const stored = {};
   const requests = [];
@@ -429,6 +534,12 @@ function loadBackground() {
       return new Response(new Uint8Array([0xff, 0xd8, 0xff]), {
         status: 200,
         headers: { 'content-type': 'image/jpeg' }
+      });
+    }
+    if (String(url).startsWith('https://scontent.cdninstagram.com/configure-large')) {
+      return new Response(new Uint8Array([0x52, 0x49, 0x46, 0x46]), {
+        status: 200,
+        headers: { 'content-type': 'image/webp' }
       });
     }
     if (String(url).startsWith('https://pbs.twimg.com/media/missing')) {
@@ -618,6 +729,22 @@ assert.match(
   /!\[成功圖片\]\(<\.\.\/\.\.\/附件\/Social Post to Obsidian\/2026-07-18_1100_圖片同步測試\/image-01\.jpg>\)/
 );
 assert.match(markdown, /!\[失敗圖片\]\(<https:\/\/pbs\.twimg\.com\/media\/missing\.jpg>\)/);
+
+const threadsConfigureFilename = '2026-07-18_1110_現行發文端點圖片.md';
+const threadsConfigurePath = `個人創作/社群推文/${threadsConfigureFilename}`;
+const threadsConfigureResult = await background.context.savePostBundle({
+  content: parsedThreadsConfigure.text,
+  platform: 'threads',
+  url: parsedThreadsConfigure.url,
+  timestamp: '2026-07-18T11:10:00+08:00',
+  media: parsedThreadsConfigure.media
+}, threadsConfigurePath, threadsConfigureFilename, settings);
+assert.deepEqual(JSON.parse(JSON.stringify(threadsConfigureResult)), { savedMedia: 1, failedMedia: 0 });
+assert.match(
+  decodeURIComponent(background.requests[2].url),
+  /附件\/Social Post to Obsidian\/2026-07-18_1110_現行發文端點圖片\/image-01\.webp$/
+);
+assert.match(background.requests[3].init.body, /!\[現行 Threads 圖片\]/);
 
 const imageOnlyFilename = background.context.generateFilename({
   content: '',

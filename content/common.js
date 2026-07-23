@@ -221,9 +221,11 @@ var SP2O = (function () {
       if (!post) return null;
 
       const username = post.user?.username || '';
-      const url = (username && post.code)
-        ? `https://www.threads.com/@${username}/post/${post.code}`
-        : '';
+      const url = typeof post.permalink === 'string' && post.permalink
+        ? post.permalink
+        : (username && post.code)
+          ? `https://www.threads.com/@${username}/post/${post.code}`
+          : '';
 
       let text = post.caption?.text || '';
       if (!text) {
@@ -254,11 +256,22 @@ var SP2O = (function () {
     }
   }
 
-  // Use image_versions2 for single images and carousels; do not treat video covers as photos.
+  // Use image_versions2 for single images, carousels, and inline media;
+  // do not treat video covers as photos.
   function extractThreadsMedia(post) {
-    const items = Array.isArray(post.carousel_media) && post.carousel_media.length > 0
-      ? post.carousel_media
-      : [post];
+    const linkedInlineMedia = post.text_post_app_info?.linked_inline_media;
+    const items = [post, linkedInlineMedia].flatMap((container) => {
+      if (!container) return [];
+      if (Array.isArray(container.carousel_media) && container.carousel_media.length > 0) {
+        return container.carousel_media;
+      }
+
+      const hasImage = Array.isArray(container.image_versions2?.candidates)
+        && container.image_versions2.candidates.length > 0;
+      const hasVideo = Array.isArray(container.video_versions)
+        && container.video_versions.length > 0;
+      return hasImage || hasVideo ? [container] : [];
+    });
     const seen = new Set();
 
     return items.flatMap((item, index) => {
@@ -277,12 +290,19 @@ var SP2O = (function () {
     });
   }
 
-  // 深度搜尋回應 JSON 中的貼文物件（有 pk + code + user.username 即視為貼文）
+  // 深度搜尋回應 JSON 中的貼文物件。舊 GraphQL response 有 user.username；
+  // 現行 media configure response 可能只保證 pk + code/permalink 與媒體欄位。
   // 主貼文一定比其內嵌的引用貼文先被走訪到
   function findThreadsPost(node, depth) {
     if (!node || typeof node !== 'object' || depth > 12) return null;
-    if (node.pk && typeof node.code === 'string'
-      && node.user && typeof node.user.username === 'string') {
+    const hasIdentity = node.pk
+      && (typeof node.code === 'string' || typeof node.permalink === 'string');
+    const hasPostData = (node.user && typeof node.user.username === 'string')
+      || node.caption
+      || node.image_versions2
+      || node.carousel_media
+      || node.media_type;
+    if (hasIdentity && hasPostData) {
       return node;
     }
     for (const key of Object.keys(node)) {

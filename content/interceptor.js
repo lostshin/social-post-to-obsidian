@@ -7,6 +7,11 @@
   // 判斷是否為發文請求：回傳平台代號或 null
   function matchCreateRequest(url, friendlyName) {
     if (/\/graphql\/[^/?]+\/Create(Note)?Tweet/i.test(url)) return 'x';
+    // Threads web publishing uses Instagram media configure endpoints rather than GraphQL.
+    // The response contains the canonical post data and downloadable image candidates.
+    if (/\/api\/v1\/media\/configure_text_(?:only_post|post_app_(?:feed|sidecar))\/?(?:[?#]|$)/i.test(url)) {
+      return 'threads';
+    }
     if (url.includes('/graphql') && /create.*post|post.*create/i.test(friendlyName || '')) {
       return 'threads';
     }

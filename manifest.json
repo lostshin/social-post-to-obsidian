@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Social Post to Obsidian",
-  "version": "2.4.0",
+  "version": "2.4.2",
   "description": "發佈 X 與 Threads 貼文後，自動將文字與圖片備份至你的 Obsidian Vault",
   "permissions": [
     "storage",
