@@ -28,12 +28,12 @@ Social Post to Obsidian 支援兩種 Vault 寫入方式：
 
 Chrome Web Store 只能安裝擴充功能，不能代替使用者安裝 Native Helper。商店版使用者若採本機 Helper，需要再完成以下步驟：
 
-1. 從同版本的 [GitHub Release](https://github.com/lostshin/social-post-to-obsidian/releases) 下載 `social-post-to-obsidian-helper-v*-macos.zip` 並解壓縮。
-2. 開啟 `chrome://extensions/`，啟用「開發人員模式」，複製 Social Post to Obsidian 顯示的 32 字元 extension ID。
-3. 在終端機進入 Helper 解壓縮資料夾，執行：
+1. 從 [Chrome Web Store](https://chromewebstore.google.com/detail/social-post-to-obsidian/jdfempgjnmdlokacfjmnipihhghcnomb) 安裝 Social Post to Obsidian。
+2. 從同版本的 [GitHub Release](https://github.com/lostshin/social-post-to-obsidian/releases) 下載 `social-post-to-obsidian-helper-v*-macos.zip` 並解壓縮。
+3. 在終端機進入 Helper 解壓縮資料夾，使用正式 extension ID 執行：
 
    ```bash
-   ./native/install-host.sh <extension-id>
+   ./native/install-host.sh jdfempgjnmdlokacfjmnipihhghcnomb
    ```
 
 4. 回到 `chrome://extensions/` 按「重新載入」，再依上一節第 6–7 步選擇 Vault。
@@ -64,4 +64,4 @@ Chrome Web Store 只能安裝擴充功能，不能代替使用者安裝 Native H
 
    此指令會移除 Helper 與 Native Messaging manifest，但保留 Vault 選擇設定。若也要清除 Helper 設定，使用 `./native/uninstall-host.sh --purge`。
 
-遇到問題時請先查看 [README 的已知限制](https://github.com/lostshin/social-post-to-obsidian#已知限制)，再到 [GitHub Issues](https://github.com/lostshin/social-post-to-obsidian/issues) 回報；不要貼出 API Key、私人貼文或完整平台回應。
+遇到問題時請先查看 [繁中 README 的已知限制](README.zh-TW.md#已知限制)，再到 [GitHub Issues](https://github.com/lostshin/social-post-to-obsidian/issues) 回報；不要貼出 API Key、私人貼文或完整平台回應。

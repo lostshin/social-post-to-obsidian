@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1280, initial-scale=1">
+  <title>Social Post to Obsidian — Workflow Demo</title>
+  <style>
+    :root {
+      --ink: #25222b;
+      --ink-soft: #5e5966;
+      --paper: #f4f0e9;
+      --paper-raised: #fffdf9;
+      --line: #d9d1c7;
+      --accent: #6e56b3;
+      --accent-soft: #e9e1fa;
+      --green: #397a5b;
+      --amber: #9b6b26;
+      --shadow: 0 28px 70px rgba(46, 38, 55, 0.14);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 1280px;
+      height: 720px;
+      margin: 0;
+      overflow: hidden;
+      color: var(--ink);
+      background: var(--paper);
+    }
+
+    body {
+      position: relative;
+      font-family: "Avenir Next", Avenir, "Noto Sans TC", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body::before {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(rgba(37, 34, 43, 0.032) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(37, 34, 43, 0.032) 1px, transparent 1px);
+      background-size: 32px 32px;
+      content: "";
+      mask-image: linear-gradient(90deg, black, transparent 73%);
+    }
+
+    body::after {
+      position: absolute;
+      top: -230px;
+      right: -160px;
+      width: 650px;
+      height: 650px;
+      border: 1px solid rgba(110, 86, 179, 0.2);
+      border-radius: 50%;
+      box-shadow:
+        0 0 0 84px rgba(110, 86, 179, 0.035),
+        0 0 0 168px rgba(110, 86, 179, 0.025);
+      content: "";
+    }
+
+    .demo-shell {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1fr 468px;
+      gap: 64px;
+      width: 100%;
+      height: 100%;
+      padding: 54px 60px 42px 66px;
+    }
+
+    .story {
+      position: relative;
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-row img {
+      width: 42px;
+      height: 42px;
+      filter: drop-shadow(0 7px 12px rgba(46, 38, 55, 0.15));
+    }
+
+    .brand-name {
+      font-size: 14px;
+      font-weight: 750;
+      letter-spacing: 0.01em;
+    }
+
+    .brand-note {
+      margin-top: 2px;
+      color: var(--ink-soft);
+      font-size: 10px;
+      font-weight: 650;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+
+    .story-stage {
+      position: relative;
+      flex: 1;
+      margin-top: 55px;
+    }
+
+    .stage {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      opacity: 0;
+      transform: translateY(18px);
+    }
+
+    .stage-number {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 19px;
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .stage-number::after {
+      width: 76px;
+      height: 1px;
+      background: var(--accent);
+      content: "";
+      opacity: 0.48;
+    }
+
+    h1,
+    h2 {
+      max-width: 680px;
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      font-size: 67px;
+      font-weight: 700;
+      letter-spacing: -0.052em;
+      line-height: 0.96;
+    }
+
+    h2 {
+      font-size: 60px;
+    }
+
+    .accent {
+      color: var(--accent);
+      font-style: italic;
+    }
+
+    .stage-copy {
+      max-width: 610px;
+      margin: 26px 0 0;
+      color: var(--ink-soft);
+      font-size: 19px;
+      font-weight: 500;
+      line-height: 1.55;
+    }
+
+    .stage-copy strong {
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .platform-row,
+    .proof-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 32px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 0 13px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 253, 249, 0.76);
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: 0.035em;
+    }
+
+    .chip::before {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      content: "";
+    }
+
+    .chip.green::before {
+      background: var(--green);
+    }
+
+    .chip.amber::before {
+      background: var(--amber);
+    }
+
+    .vault-card {
+      width: 650px;
+      margin-top: 28px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: rgba(255, 253, 249, 0.86);
+      box-shadow: 0 18px 45px rgba(46, 38, 55, 0.09);
+    }
+
+    .vault-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 13px 17px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .vault-head strong {
+      font-size: 12px;
+    }
+
+    .vault-head span {
+      color: var(--green);
+      font-size: 10px;
+      font-weight: 750;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .vault-files {
+      display: grid;
+      grid-template-columns: 1.18fr 0.82fr;
+      min-height: 148px;
+    }
+
+    .note-preview {
+      padding: 15px 17px;
+      border-right: 1px solid var(--line);
+      color: #514b57;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 10px;
+      line-height: 1.52;
+    }
+
+    .note-preview b {
+      color: var(--accent);
+      font-weight: 650;
+    }
+
+    .file-tree {
+      padding: 15px 18px;
+      color: var(--ink-soft);
+      font-size: 10px;
+      line-height: 1.85;
+    }
+
+    .file-tree strong {
+      display: block;
+      color: var(--ink);
+      font-size: 11px;
+    }
+
+    .file-tree span {
+      display: block;
+      padding-left: 15px;
+    }
+
+    .popup-stage {
+      position: relative;
+      display: grid;
+      place-items: center;
+    }
+
+    .window {
+      position: relative;
+      width: 428px;
+      height: 652px;
+      padding: 36px 24px 16px;
+      border: 1px solid rgba(217, 209, 199, 0.95);
+      border-radius: 24px;
+      background: rgba(255, 253, 249, 0.85);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    .window-bar {
+      position: absolute;
+      top: 14px;
+      left: 20px;
+      display: flex;
+      gap: 6px;
+    }
+
+    .window-bar i {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #cbc3b9;
+    }
+
+    .window-label {
+      position: absolute;
+      top: 11px;
+      right: 20px;
+      color: var(--ink-soft);
+      font-size: 8px;
+      font-weight: 750;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+
+    .window iframe {
+      display: block;
+      width: 380px;
+      height: 600px;
+      border: 0;
+      border-radius: 12px;
+      background: #f6f3ee;
+      box-shadow: 0 0 0 1px rgba(217, 209, 199, 0.75);
+    }
+
+    .pulse-ring {
+      position: absolute;
+      right: 31px;
+      bottom: 40px;
+      width: 54px;
+      height: 54px;
+      border: 1px solid rgba(110, 86, 179, 0.5);
+      border-radius: 50%;
+      opacity: 0;
+      transform: scale(0.5);
+    }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: auto;
+    }
+
+    .timeline-step {
+      position: relative;
+      padding-top: 14px;
+      border-top: 2px solid #d8d0c7;
+      color: #8b848f;
+      font-size: 9px;
+      font-weight: 750;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .timeline-step.active {
+      border-color: var(--accent);
+      color: var(--ink);
+    }
+
+    .timeline-step.active::before {
+      position: absolute;
+      top: -5px;
+      left: 0;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      content: "";
+    }
+
+    .fine-print {
+      position: absolute;
+      right: 18px;
+      bottom: 7px;
+      color: rgba(94, 89, 102, 0.72);
+      font-size: 8px;
+      font-weight: 650;
+      letter-spacing: 0.06em;
+    }
+  </style>
+</head>
+<body>
+  <main class="demo-shell">
+    <section class="story">
+      <div class="brand-row">
+        <img src="../icons/logo.svg" alt="">
+        <div>
+          <div class="brand-name">Social Post to Obsidian</div>
+          <div class="brand-note">Local-first archive for X + Threads</div>
+        </div>
+      </div>
+
+      <div class="story-stage">
+        <article class="stage" data-stage="0">
+          <div class="stage-number">00 · The idea</div>
+          <h1>Write once.<br><span class="accent">Keep it.</span></h1>
+          <p class="stage-copy">Your posts should not live only on someone else's platform. Publish as usual; the extension keeps a local copy for you.</p>
+          <div class="platform-row">
+            <span class="chip">X posts</span>
+            <span class="chip">Threads</span>
+            <span class="chip amber">Static images</span>
+          </div>
+        </article>
+
+        <article class="stage" data-stage="1">
+          <div class="stage-number">01 · While you write</div>
+          <h2>Your draft is<br><span class="accent">already safe.</span></h2>
+          <p class="stage-copy">Drafts are quietly saved to your own Vault. No developer cloud, no analytics payload, no new writing habit to learn.</p>
+          <div class="proof-row">
+            <span class="chip green">Auto-saved</span>
+            <span class="chip">Local-first</span>
+          </div>
+        </article>
+
+        <article class="stage" data-stage="2">
+          <div class="stage-number">02 · After publishing</div>
+          <h2>Published.<br><span class="accent">Archived.</span></h2>
+          <p class="stage-copy">The final post replaces the draft and keeps its source URL, thread structure, timestamp, quote context, and images.</p>
+          <div class="proof-row">
+            <span class="chip green">Markdown saved</span>
+            <span class="chip amber">Images downloaded</span>
+          </div>
+        </article>
+
+        <article class="stage" data-stage="3">
+          <div class="stage-number">03 · In your Vault</div>
+          <h2>Portable files.<br><span class="accent">Your archive.</span></h2>
+          <div class="vault-card">
+            <div class="vault-head">
+              <strong>2026-07-23_2030_keep-your-writing.md</strong>
+              <span>Saved locally</span>
+            </div>
+            <div class="vault-files">
+              <div class="note-preview">
+                ---<br>
+                title: <b>"Keep your writing"</b><br>
+                platform: "Twitter/X"<br>
+                status: "published"<br>
+                ---<br><br>
+                ## Content<br>
+                ```text<br>
+                Write once. Keep it.<br>
+                ```<br><br>
+                ![](image-01.jpg)
+              </div>
+              <div class="file-tree">
+                <strong>Vault</strong>
+                <span>└─ 個人創作/社群推文/</span>
+                <span>&nbsp;&nbsp;└─ keep-your-writing.md</span>
+                <strong style="margin-top:8px">Attachments</strong>
+                <span>└─ Social Post to Obsidian/</span>
+                <span>&nbsp;&nbsp;└─ image-01.jpg</span>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="timeline" aria-hidden="true">
+        <div class="timeline-step">Write</div>
+        <div class="timeline-step">Draft</div>
+        <div class="timeline-step">Publish</div>
+        <div class="timeline-step">Vault</div>
+      </div>
+    </section>
+
+    <aside class="popup-stage">
+      <div class="window">
+        <div class="window-bar"><i></i><i></i><i></i></div>
+        <div class="window-label">Actual extension UI</div>
+        <iframe id="popup" src="../popup/popup.html" title="Social Post to Obsidian popup"></iframe>
+        <div class="pulse-ring" aria-hidden="true"></div>
+      </div>
+      <div class="fine-print">ISOLATED DEMO DATA · NO PRIVATE ACCOUNT CONTENT</div>
+    </aside>
+  </main>
+
+  <script>
+    const popupFrame = document.getElementById('popup');
+    let popupDocument;
+
+    function activityItem(doc, filename, meta) {
+      const item = doc.createElement('li');
+      item.innerHTML = `
+        <a class="activity-open-link" href="#">
+          <span class="activity-copy">
+            <span class="activity-filename"></span>
+            <small></small>
+          </span>
+          <span class="activity-open-icon" aria-hidden="true">↗</span>
+        </a>
+        <button type="button" class="activity-delete-btn">刪</button>
+      `;
+      item.querySelector('.activity-filename').textContent = filename;
+      item.querySelector('small').textContent = meta;
+      return item;
+    }
+
+    function setPopupStage(stage) {
+      if (!popupDocument) return;
+
+      const doc = popupDocument;
+      const draftSection = doc.getElementById('draftSection');
+      const draftList = doc.getElementById('draftList');
+      const recentList = doc.getElementById('recentList');
+
+      doc.getElementById('version').textContent = 'v2.4.0';
+      doc.getElementById('connDot').className = 'dot ok';
+      doc.getElementById('connText').textContent = '已連接：創作筆記';
+      doc.getElementById('settingsPanel').open = false;
+      doc.getElementById('vaultName').textContent = '創作筆記';
+
+      if (stage === 1) {
+        draftSection.hidden = false;
+        draftList.replaceChildren(
+          activityItem(doc, '_草稿_Twitter.md', 'Twitter/X · 最後暫存 20:29')
+        );
+      } else {
+        draftSection.hidden = true;
+        draftList.replaceChildren();
+      }
+
+      const items = [];
+      if (stage >= 2) {
+        items.push(activityItem(doc, '2026-07-23_2030_keep-your-writing.md', 'Twitter/X · 剛剛'));
+      }
+      items.push(
+        activityItem(doc, '2026-07-22_1932_三則串文的完整備份.md', 'Threads · 昨天'),
+        activityItem(doc, '2026-07-21_0915_今天整理出的產品想法.md', 'Twitter/X · 2 天前')
+      );
+      recentList.replaceChildren(...items);
+    }
+
+    function stageOpacity(progress, index) {
+      const center = (index + 0.5) / 4;
+      const distance = Math.abs(progress - center);
+      return Math.max(0, Math.min(1, 1 - distance / 0.105));
+    }
+
+    window.setDemoProgress = (rawProgress) => {
+      const progress = Math.max(0, Math.min(0.9999, Number(rawProgress) || 0));
+      const activeStage = Math.min(3, Math.floor(progress * 4));
+
+      document.querySelectorAll('.stage').forEach((element, index) => {
+        const opacity = stageOpacity(progress, index);
+        element.style.opacity = opacity;
+        element.style.transform = `translateY(${(1 - opacity) * 18}px)`;
+      });
+
+      document.querySelectorAll('.timeline-step').forEach((element, index) => {
+        element.classList.toggle('active', index <= activeStage);
+      });
+
+      const localProgress = (progress * 4) % 1;
+      const pulse = document.querySelector('.pulse-ring');
+      const pulseProgress = Math.max(0, Math.min(1, (localProgress - 0.48) / 0.38));
+      pulse.style.opacity = activeStage === 2 ? String(1 - pulseProgress) : "0";
+      pulse.style.transform = `scale(${0.55 + pulseProgress * 1.15})`;
+
+      setPopupStage(activeStage);
+    };
+
+    popupFrame.addEventListener('load', () => {
+      popupDocument = popupFrame.contentDocument;
+      window.setDemoProgress(0.01);
+      window.demoReady = true;
+    });
+  </script>
+</body>
+</html>
