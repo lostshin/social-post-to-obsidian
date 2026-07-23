@@ -8,88 +8,98 @@
 - Name：`Social Post to Obsidian`
 - Version：`2.4.2`
 - Category：`Productivity`
+- Primary language：`中文（繁體）`
+- Secondary locale：`English`
 - Visibility：`Public`
 - Regions：`All regions`
 
-## 中文（繁體）
+## 中文（繁體，主要語系）
 
 ### 摘要
 
 ```text
-把 X、Threads 直接當筆記軟體。貼文、串文與靜態圖片會自動存進 Obsidian，不必多按擷取按鈕；少一次切換，也少一點寫作阻力，對 AuDHD 更友善。
+直接把 X（Twitter）與 Threads 當成筆記軟體。貼文、串文與靜態圖片會自動存進 Obsidian，不用複製貼上，也不用按擷取按鈕；特別適合想減少工具切換與寫作阻力的 AuDHD 族群。
 ```
 
 ### 詳細說明
 
 ```text
-把社群媒體直接當筆記軟體。
+直接把社群媒體當成你的筆記軟體。
 
-很多想法，本來就寫在 X 或 Threads。可能是一句話，也可能一路寫成串文。Social Post to Obsidian 不叫你搬家，也不多塞一個收件匣。照常發文，文字、串文與靜態圖片就會整理成 Markdown，存進你自己的 Obsidian Vault。
+你已經在 X（Twitter）或 Threads 寫下想法，為什麼發文後還要再整理一次？
 
-發文後不用再回頭整理。沒有擷取按鈕，也不用切到 Obsidian 複製貼上。這一步消失了。
+Social Post to Obsidian 會在貼文發佈後，自動把文字、串文與靜態圖片整理成 Markdown，存進你自己的 Obsidian Vault。短短一句會存，一路寫下去的長串文也會存，而且保留原本順序。
 
-發出去，就存下來
+寫完就存，不用回頭
 
-一則短文會存，連續串文也會照順序存。每則內容放在獨立、可直接複製的 Markdown code block，來源網址、發佈時間、平台、回覆、引用與串文數量也會一併保存。
+發文後，不必回頭按擷取、不必切到 Obsidian，也不必重新整理格式。你照原本的方式寫，筆記會自己存好。
 
-少一個打斷思路的地方
+長串文也不會散掉
 
-如果你有 AuDHD，可能很熟悉這種中斷：文章寫到一半，卻卡在切換工具、整理格式或記得存檔。多一個按鈕，就多一個斷掉思路的地方。
+每一則串文都會依序保存，並放進獨立、可直接複製的 Markdown code block。來源網址、發佈時間、平台、回覆、引用與串文數量也會一起留下來。日後回到 Obsidian，看到的是完整文章，不是一堆散落的貼文。
 
-這個流程把「記得整理」拿掉了。打開 X 或 Threads，寫完就發。歸檔交給擴充功能。
+少一次切換，留住原本的思路
 
-不用多記一件事
+寫作阻力常常出現在寫完之後：切到另一個工具、按下擷取、調整格式，再確認有沒有存好。對 AuDHD 族群而言，這些額外步驟更可能打斷思路，也容易讓「等等再整理」最後變成沒有整理。
 
-• 發佈 X 或 Threads 貼文後自動建立 Markdown
+Social Post to Obsidian 把保存工作放到背景。社群平台負責讓你開始寫，Obsidian 負責讓內容留下來。你不用另外養成一套筆記習慣，也少了一個中斷寫作的地方。
+
+不用多做，筆記照樣完整
+
+• 發佈 X 或 Threads 貼文後，自動建立 Markdown 筆記
 • 保存單則貼文、連續串文與靜態圖片
-• 撰寫時自動暫存草稿，正式貼文成功存檔後才清除
-• Obsidian 暫時無法使用時排入佇列，連線恢復後自動補存
-• 可自訂筆記與附件路徑
+• 自動暫存草稿，正式貼文成功存檔後才清除
+• Obsidian 暫時無法使用時先排入佇列，恢復後自動補存
+• 自訂筆記與附件路徑
 • 從 Popup 預覽、開啟或刪除草稿與最近存檔
 
-資料留在自己的 Vault
+內容回到自己的 Vault
 
 macOS 使用者可安裝開源 Native Helper，直接寫入自己的 Vault，不需要 Obsidian 外掛或 API Key。Windows、Linux，或不想安裝 Helper 的使用者，可以改用 Obsidian Local REST API。
 
-本專案沒有開發者後端、遙測、分析或廣告，也不會載入遠端程式碼。你的文字、圖片與設定只會在自己的裝置上處理。
+本專案沒有開發者後端、遙測、分析或廣告，也不會載入遠端程式碼。文字、圖片與設定只在你的裝置上處理。
 
 目前支援靜態圖片；影片與動態 GIF 不會下載。
 
 本專案是獨立開源工具，未受 X、Meta、Threads、Obsidian 或其關係企業贊助、認可或維護。
 ```
 
-## English
+## English（次要語系）
 
 ### Summary
 
 ```text
-Use X and Threads as your notes. Posts and threads save to Obsidian automatically—no capture button, AuDHD-friendly.
+Turn X and Threads into your writing inbox. Posts and threads save to Obsidian automatically—no copy-paste or capture button.
 ```
 
 ### Detailed description
 
 ```text
-Use social media as your note-taking app.
+Write where you already write.
 
-A lot of writing starts on X or Threads: one sentence at first, then maybe a whole thread. Social Post to Obsidian lets you keep writing there. Publish as usual, and the text, thread order, and static images are saved as Markdown in your own Obsidian Vault.
+You are already capturing ideas on X or Threads. Why do the same work again after you publish?
 
-Once the post is out, there is nothing else to remember. No capture button. No copy-and-paste trip back to Obsidian.
+Social Post to Obsidian automatically turns published posts, threads, and static images into Markdown in your own Obsidian Vault. A single thought is saved. A long thread is saved in its original order.
 
-Post it. Keep it.
+Publish once. Keep it in Obsidian.
 
-A short post is saved. A long thread is saved in order. Each post stays in its own copyable Markdown code block, together with the source URL, publish time, platform, replies, quotes, and thread count.
+There is no capture button to remember, no copy-paste trip back to Obsidian, and no second round of formatting. Keep writing the way you already do. The note takes care of itself.
 
-One less place to lose your train of thought
+Threads stay together
 
-If you have AuDHD, you may know the point where a good thought disappears between tabs, formatting, and little maintenance tasks. One extra button is one more place to stop.
+Each post in a thread is preserved in order and kept in its own copyable Markdown code block. Source URLs, publish times, replies, quotes, and thread counts stay with the writing. When you return to Obsidian, you get the complete piece instead of scattered posts.
 
-This workflow removes the “remember to file it” step. Open X or Threads, write, and publish. The extension does the filing.
+Less context switching, less writing friction
 
-Nothing extra to remember
+Writing flow often breaks after the writing is done: switching tools, pressing a capture button, fixing the format, and checking whether the note was saved. For people in the AuDHD community, those extra steps can make “I’ll organize it later” turn into never organizing it.
+
+Social Post to Obsidian handles the filing in the background. Social media is where the writing starts; Obsidian is where it stays. There is no second note-taking habit to build.
+
+Do less. Keep the complete note.
 
 • Create Markdown automatically after publishing on X or Threads
 • Preserve individual posts, multi-post threads, and static images
-• Autosave drafts and remove them only after the published post is safely stored
+• Autosave drafts and clear them only after the published post is safely stored
 • Queue interrupted saves and retry when Obsidian becomes available again
 • Choose your own note and attachment paths
 • Preview, open, or delete drafts and recent saves from the popup
