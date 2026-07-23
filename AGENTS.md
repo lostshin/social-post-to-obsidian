@@ -1,91 +1,98 @@
 # AGENTS.md
 
-本檔只記錄 `CLAUDE.md` 未涵蓋的 Codex 最短路徑、已驗證陷阱與發布現況。架構、訊息流、MV3 重載、版本原則、一般 selector／修改紀律及基本驗證清單只讀 `CLAUDE.md`，不在此重述。快照與現況衝突時，以 `manifest.json`、目前程式及測試為準。
+本檔只補充 `CLAUDE.md` 未涵蓋的 Codex 捷徑、已驗證陷阱與發布快照。架構、MV3 重載、版本原則、通用修改紀律及基本驗證仍以 `CLAUDE.md` 為準；若文件衝突，以 `manifest.json`、目前程式與測試為準。`CLAUDE.md` 內的 `v2.2.1`、1.5 秒 debounce、Threads 只走 GraphQL 與舊 E2E 快照已過時。
 
 ## Codex 最短路徑
 
-1. 先執行 `git status --short`，再用 `rg -n` 只讀相關區塊；不要先通讀 repository。
-2. 回歸測試一律優先擴充 `tests/media-sync.test.mjs`，沿用其 VM、Native Host、YAML 與隔離 Vault harness。
-3. 程式驗證照 `CLAUDE.md`，不要另建平行清單；封裝才加跑 `./scripts/package-extension.sh` 並核對兩個 ZIP 與 `dist/SHA256SUMS`。
-4. 修改 `native/host.rb` 才加跑 `ruby -c native/host.rb`、安裝 Host 並比對安裝檔；Host 行為變更同步更新 `HOST_VERSION`。
-5. 不操作日常 Chrome profile、真實貼文或真實筆記。自動驗證用隔離資料；runtime surface 最後交使用者人工驗收，除非另有授權。
+1. 先跑 `git status --short`；既有 dirty files 屬於使用者，只 stage 任務檔。再用 `rg -n` 讀相關區塊，不先掃完整 repository。
+2. 回歸測試優先擴充 `tests/media-sync.test.mjs`，沿用 VM、Native Host、YAML 與隔離 Vault harness。
+3. 程式驗證照 `CLAUDE.md`；發布才跑 `./scripts/package-extension.sh`，核對兩個 ZIP 與 `dist/SHA256SUMS`。
+4. 修改 `native/host.rb` 才額外跑 `ruby -c`、安裝 Host 並比對安裝檔；Host 行為變更同步更新 `HOST_VERSION`。
+5. 不碰日常 Chrome profile、真實貼文或真實筆記；用隔離資料。社群發文目前暫停，沒有使用者新的明確授權就不得代發。
 
-## 現況與進度（2026-07-19）
+## 目前快照（2026-07-23）
 
-- Extension `v2.4.0`；Native Host `v1.1.3`。GitHub `main` 已到 `8018a2a`（含 `v2.2.2`～`v2.4.0`），尚未 tag／Release；本輪 CI zsh 修正仍在 local `main`。
-- 使用者已確認 `v2.2.2` 的 X 草稿三重複 bug 修復成功。
-- `v2.3.0` 已完成 500ms 草稿同步、X／Threads 串文結構、YAML frontmatter 與新版 Markdown；`v2.4.0` 已完成逐則 code block。兩版已通過自動測試與隔離 Vault 實寫，仍待真實 X／Threads 人工驗收。
-- 舊設定 `storageMode: 'direct'` 會遷移成 `native`；background／popup 的 `'direct'` 相容分支仍是活碼。
-- 商店仍待正式 item／extension ID、乾淨資料的 Actual UI screenshot、正式流程驗收與送審；現有 `assets/store/screenshot-overview.png` 只是流程圖。
+- Extension `v2.4.2`；Native Host `v1.1.3`。Tag `v2.4.2` 固定在 commit `8569607`；GitHub Release、兩個 ZIP 與 `SHA256SUMS` 已公開並驗證。
+- `main` 在 tag 後另有文件 commit：繁中 `README.md` 是 GitHub 主頁，英文在 `README.en.md`；不要為了讓 tag 帶到新文件而移動或重打已公開 tag。
+- `v2.4.2` 已由使用者完成 Threads 單圖發文 → Obsidian 真實 E2E。X 多圖、Threads 多圖仍未分別驗收，不得宣稱全通過。
+- Web Store item ID：`jdfempgjnmdlokacfjmnipihhghcnomb`。語系雖顯示核准，但 2026-07-23 公開頁仍「無法存取」，update service 回 `error-unknownApplication`；`v2.4.2` 尚未上傳／送審。
+- 只有 update service 回 `status="ok"`、公開頁出現「加到 Chrome」且可從商店安裝，才能宣稱已公開上架；Dashboard 語系 `Approved` 不等於已發布。
+- Web Store 上傳用 GitHub Release 的 `social-post-to-obsidian-v2.4.2.zip`；Helper ZIP 不上傳。正式下載副本在 `dist/release-v2.4.2/`。
+- `v2.4.2` 雙語商店文案與 reviewer note 在 `assets/store/publish-v2.4.2/LISTING.md`；權限理由、Privacy practices 與圖片素材沿用 `publish-v2.4.0/`。
+- 舊設定 `storageMode: 'direct'` 會遷移為 `native`；background／popup 的 `'direct'` 相容分支仍是活碼。
 
-## X／Threads 擷取：已驗證規則
+## 公開文件與文案同步
 
-- X 真正編輯器 selector 是 `[data-testid^="tweetTextarea_"][contenteditable="true"]`。只用前綴會同時抓到 `_label`、`RichTextInputContainer` 與 editor，造成同文三份；不得放寬。
-- X 去重以真正 editor 的 `data-testid` 為準，不得按文字去重；合法串文可能有兩則完全相同內容。
-- X／Threads 的 `getTextContent()` 回傳按畫面順序排列的字串陣列。`content/common.js` 同時保留相容用 `content`（以 `\n\n---\n\n` 串接）及結構化 `thread`；只有兩則以上才傳 `thread`。
-- 草稿與發布必須保留同一份 `thread`；8 秒 DOM fallback 與遲到 API 修正也不得遺失它。舊 queue 沒有 `thread` 時仍須可讀。
-- 500ms debounce 只定義在 `content/common.js`；平台檔不得各自另設 timer。
-- 最小回歸組合：X wrapper 三重複、X 相同文字雙則、Threads 雙則、500ms `SAVE_DRAFT`、fallback `PUBLISH_DRAFT` 的 `thread`。
+- 使用者說「整體文案」時，不可只改深層 `LISTING.md`：同步檢查 `README.md`、`README.en.md`、GitHub About description、Store listing；必要連動才改 `INSTALL.md`／`PRIVACY.md`。
+- 對外語系固定：台灣繁中為主、英文為次；AuDHD 寫成「AuDHD 族群／AuDHD community」，不當產品形容詞或醫療效果宣稱。
+- 行銷順序：先說痛點（發文後還要擷取、切換、整理）→ 解法（發布後自動轉 Markdown）→ 效益（降低寫作阻力、串文完整留在 Vault）→ 功能與隱私證據。
+- Chrome Web Store 上限：Name 45、Summary 132、Detailed description 8000 字元；修改後用 code point 計數。若要求去 AI 味，套用 `humanize`；繁中再用 `dewesternise`。
+- `README.md` 是 GitHub 首頁；`README.en.md` 是英文版；`README.zh-TW.md` 只保留相容入口。改檔名後用 `rg` 更新所有相對連結。
+- GitHub About 不是 repository 檔案；README 改完仍須用 `gh repo view/edit` 讀回 description。最後再抓公開 GitHub 頁，確認實際渲染而非只看 local／raw。
+
+## X／Threads 擷取契約
+
+- X editor 固定為 `[data-testid^="tweetTextarea_"][contenteditable="true"]`。只用前綴會抓到 `_label`、`RichTextInputContainer` 與 editor，造成同文三份。
+- 去重用 editor `data-testid`，不可按文字；合法串文可能有兩則完全相同內容。
+- 兩平台 `getTextContent()` 按畫面順序回傳字串陣列。`content/common.js` 保留相容用 `content`（以 `\n\n---\n\n` 串接）與結構化 `thread`；只有兩則以上才傳 `thread`。
+- 草稿、發布、8 秒 DOM fallback、遲到 API 修正都必須保留同一份 `thread`；舊 queue 沒有 `thread` 仍須可讀。
+- 500ms debounce 只定義在 `content/common.js`；平台檔不得另設 timer。
+- 最小回歸：X wrapper 三重複、X 相同文字雙則、Threads 雙則、500ms `SAVE_DRAFT`、fallback `PUBLISH_DRAFT` 的 `thread`。
+
+## Threads 圖片發文契約
+
+- 現行 threads.com 正式發文走 REST：`configure_text_only_post`、`configure_text_post_app_feed`（單圖）、`configure_text_post_app_sidecar`（多圖）；`content/interceptor.js` 必須同時保留這三個精確 endpoint 與舊 GraphQL 相容攔截，fetch／XHR 共用判斷。
+- configure response 的主貼文可能只有 `pk`、`code`／`permalink` 與媒體欄位，沒有 `user.username`。`parseThreadsCreate()` 優先用 `permalink`，不可把 `findThreadsPost()` 收窄回舊 GraphQL shape。
+- 圖片來源依序涵蓋主貼文 `image_versions2`、`carousel_media` 與相容用 `text_post_app_info.linked_inline_media`；選最大 candidate，有非空 `video_versions` 就跳過。
+- 8 秒 DOM fallback 只有文字，沒有正式 CDN URL。若「文字有存、圖片沒存」，第一步查 REST endpoint 是否被 interceptor 命中；不可只增加 parser 欄位或猜 `linked_inline_media`。
+- 平台改版時先從目前 Threads bundle 的 `BarcelonaComposerAPI`／實際 Network 確認 endpoint 與 response，再改 fixture；不要靠舊私有 API 範例猜 JSON。
+- 自動回歸必須覆蓋：三個 endpoint 會 forward、upload endpoint 不誤判、configure response 取最大圖片、background 下載並寫入圖片與 Markdown。自動測試或文字 fallback 成功都不能取代真實多圖 E2E。
 
 ## Obsidian Markdown／YAML 契約
 
-- 草稿與正式貼文共用 `getThreadItems()`／`renderContentSection()`；單則用一個 code block，串文每則各有 `### N / total` 與獨立 code block。
-- `renderCopyableContent()` 的 fence 必須比原文最長 backtick run 多 1，且至少 3；不得固定長度，否則含 code fence 的貼文會截斷。
-- 圖片與引用貼文留在 code block 外；引用用 callout，自己的貼文內容才包成可複製區塊。
-- YAML 字串一律經 `escapeYaml()`（`JSON.stringify` 產生合法 YAML 雙引號字串），避免日期、`yes/no`、冒號或引號被錯誤推型。
-- 正式貼文保留 `title`、`created`、`platform`、`source`、`source_url`、`status`、`tags`、`summary`；草稿用 `updated`。串文另加數字 `thread_count` 與 `串文` tag；回覆／引用欄位只在有值時加入。
-- 格式測試必須同時做：Ruby `YAML.safe_load`、單則、串文逐則 fence、原文內含 backtick run 的動態 fence、Native Host 寫入隔離 Vault 後逐字讀回。
-- 不遷移舊筆記；只有新建或再次覆寫的草稿／正式貼文採用新格式。
+- 草稿與正式貼文共用 `getThreadItems()`／`renderContentSection()`；單則一個 code block，串文每則各有 `### N / total` 與獨立 block。
+- `renderCopyableContent()` 的 fence 至少 3 個 backticks，且必須比原文最長 backtick run 多 1。
+- 圖片與引用放在 code block 外；引用用 callout，只有自己的貼文內容包成可複製區塊。
+- YAML 字串全走 `escapeYaml()`；正式貼文保留 `title`、`created`、`platform`、`source`、`source_url`、`status`、`tags`、`summary`，草稿改用 `updated`。串文加數字 `thread_count` 與 `串文` tag。
+- 格式測試同時覆蓋 `YAML.safe_load`、單則、逐則 fence、原文 backtick run、Native Host 寫入後逐字讀回。
+- 不遷移舊筆記；只有新建或再次覆寫的檔案採新格式。
 
-## Native Helper 邊界
+## Native／iCloud／Popup 邊界
 
 - Host ID：`com.lostshin.social_post_to_obsidian`；設定：`~/Library/Application Support/Social Post to Obsidian/config.json`。
-- Native stdout 只能是 4-byte little-endian 長度加 JSON；所有子程序輸出必須捕捉，否則 Chrome 只顯示 `Native host has exited.`。
-- `sendNativeMessage()` 每次啟動新程序，不得依賴跨 request 記憶體。
-- 只接受 Vault 相對路徑，保留 Vault 邊界與 symlink 防護；不得接受任意絕對路徑。
-- 商店 Host manifest 的 `allowed_origins` 必須用正式 32 字元 extension ID；Chrome Web Store 不會代裝 Helper。
-
-## iCloud 刪除：不要重試死路
-
-Chrome 啟動的 Ruby 對 `~/Library/Mobile Documents` 直接 `File.delete` 可能回 `Operation not permitted @ apply2files`。不要再試 `chmod`、ACL、file flags 或 `com.apple.provenance`；先直接送 framed request，讀 response／exit status／stderr，最後才查 unified log。
-
-```applescript
-set targetFile to POSIX file (item 1 of argv) as alias
-tell application "Finder" to delete targetFile
-```
-
-- iCloud 用 Finder 移到垃圾桶；本機 Vault 用 `File.delete`，其他路徑只在 `Errno::EPERM` fallback Finder。
-- `move_to_trash` 只有 Finder 成功且原路徑消失才回成功；首次允許 Automation 後必須重試。
-- 隔離實測用 `.sp2o-delete-test` 與唯一檔名，並清除原檔、測試目錄及 `~/Library/Mobile Documents/.Trash`／`~/.Trash` 殘留。
-
-## Popup／Vault 一致性
-
-- `DELETE_VAULT_ACTIVITY` 只能刪 `draftStatus_*` 或 `recentSaves` 已追蹤路徑；順序是實體檔 → storage → UI，失敗不可先移除列表。
-- `SYNC_VAULT_ACTIVITY` 只在 `exists` 明確為 false 時清 storage；Host 不可用就保留。
-- `CLEAR_AUTO_DRAFTS` 逐筆嚴格刪除，失敗項保留重試。正式貼文刪除不影響社群平台原文。
+- Native stdout 只能是 4-byte little-endian 長度加 JSON；捕捉所有子程序輸出。`sendNativeMessage()` 每次開新程序，不依賴跨 request 記憶體。
+- 只接受 Vault 相對路徑，保留 Vault 邊界與 symlink 防護。商店 Host manifest 的 `allowed_origins` 必須用正式 ID `jdfempgjnmdlokacfjmnipihhghcnomb`；Web Store 不會代裝 Helper。
+- Chrome 啟動的 Ruby 在 iCloud 直接 `File.delete` 可能 `EPERM`；不要重試 `chmod`、ACL、flags 或 provenance。先送 framed request 看 response／stderr，再查 unified log。
+- iCloud 用 Finder alias 移到垃圾桶；本機 Vault 用 `File.delete`，其他路徑只在 `Errno::EPERM` fallback Finder。成功後必須確認原路徑消失。
+- `DELETE_VAULT_ACTIVITY` 只能刪 `draftStatus_*`／`recentSaves` 追蹤路徑；順序固定為實體檔 → storage → UI。
+- `SYNC_VAULT_ACTIVITY` 只在 `exists: false` 時清 storage；Host 不可用就保留。`CLEAR_AUTO_DRAFTS` 失敗項保留重試。
 
 ## 圖片、queue 與清理
 
-- X 只取 `type: photo`；Threads 取最大 `image_versions2.candidates`，有 `video_versions` 就跳過。影片、動態 GIF 與影片封面都不同步。
-- 每則最多 20 張；圖片先、Markdown 後；相同路徑重試覆寫。路徑是 `<mediaPath>/<note-stem>/image-NN.ext`，Markdown 必須用 `relativeVaultPath()`。
+- X 只取 `type: photo`；Threads 詳見上節。影片、動態 GIF、影片封面不同步。
+- 每則最多 20 張；圖片先、Markdown 後；重試覆寫相同路徑。圖片路徑為 `<mediaPath>/<note-stem>/image-NN.ext`，Markdown 只用 `relativeVaultPath()`。
 - 新貼文不建 `_assets`；舊 `_assets` 不搬不刪。單張 CDN 失敗仍存筆記並保留遠端 URL。
-- Queue 存原始 `data` 與 media URLs，不存 binary；保留舊 `item.markdown` 相容。只有已分類為連線不可用的錯誤才進 queue。
-- `cleanEmptyMediaFolders` 是 best-effort；筆記刪除成功不代表舊圖片空目錄已清除，須分開驗證。
+- Queue 存原始 `data` 與 media URLs，不存 binary；保留舊 `item.markdown`。`cleanEmptyMediaFolders` 是 best-effort，筆記刪除與空目錄清理分開驗證。
 
-## GitHub／Chrome Web Store
+## GitHub／Release 已驗證規則
 
-- 公開行為或資料處理變更要檢查 `README.md`、`INSTALL.md`、`PRIVACY.md`、`docs/CHROME_WEB_STORE.md` 與 Popup 入口是否過時；文件修改仍需使用者授權。
-- package script 產出 extension ZIP、macOS Helper ZIP、`SHA256SUMS`；商店只上傳 extension ZIP，且 `manifest.json` 必須位於 ZIP 根目錄。
-- Helper ZIP 檔名跟 release version；Host 真實版本只看 `HOST_VERSION`。不得宣稱未建立的 Store item、Official URL 或 verified publisher。
-- 禁止 remote JavaScript、`eval()`、`new Function()`。Workflows 目前用已存在的 `actions/checkout@v6`、`actions/setup-node@v6`；升版前查官方 release。
-- macOS Helper 腳本使用 zsh；Ubuntu runner 不保證有 `/bin/zsh`。Validator 只從 `PATH` 呼叫 `zsh`，validate／release workflow 必須先明確安裝它。
+- Workflows 使用 `actions/checkout@v7`、`actions/setup-node@v7`。Dependabot PR 落後 `main` 時先 `@dependabot rebase`；`push` 與 `pull_request` 會產生兩個同名 check，不代表兩種 bug。
+- Ubuntu runner 不保證有 `/bin/zsh`：validator 從 `PATH` 呼叫 `zsh`，validate／release workflow 必須先安裝 zsh。不要把 `/bin/zsh` 寫回 Node validator。
+- `release.yml` 在 `v*` tag push 後驗證 tag＝manifest version、自動測試／封裝／建立 Release；不要手動重複建 Release。
+- Tag 只能在對應 Release commit 建立一次；發布後的文件改在 `main`，不得移動、刪除或重建 tag 來改 Release 快照。
+- Release ZIP 會因封裝 timestamp 與本機預製 ZIP 有不同 hash；下載 Release 三個 assets，使用該 Release 的 `SHA256SUMS` 驗證，不拿本機舊 hash 硬比。
+- 商店只上傳 extension ZIP，且 `manifest.json` 必須在 ZIP 根目錄；Helper ZIP 與 checksum 只放 GitHub Release。禁止 remote JavaScript、`eval()`、`new Function()`。
+- Web Store Dashboard／Publish API 沒有已登入 session 或 OAuth credential 時，只做到可驗證的 handoff，不碰日常 Chrome profile、不要求帳密，也不宣稱已上傳。
+- 商店名稱維持 `Social Post to Obsidian`，避免為雙語標題無必要 bump／重傳。Official URL 只有驗證自有網域後才填。
+- 若審查拒絕，保存完整通知與 policy ID，先對照程式、`PRIVACY.md` 與 `LISTING.md`，不要猜測修改後反覆送審。
 
 ## 最短專項診斷
 
-- 草稿重複：composer scope → 真 editor selector → editor ID → `thread` array → generated Markdown。
-- 串文缺則：兩平台 inputs 順序 → `readComposerContent()` → `SAVE_DRAFT`／`PUBLISH_DRAFT` data → `thread_count`／逐則 fence。
-- 格式壞掉：frontmatter 邊界 → `YAML.safe_load` → dynamic fence 長度 → Native Host 寫入後讀回。
-- 圖片：parser media → CDN permission → binary PUT／Content-Type → 相對連結 → queue marker。
-- Popup 刪除：tracked storage path → message → framed Host response → 實體檔 → storage／UI。
-- Native Host：ping → 原始碼／安裝檔版本 → framed request → stderr → Chrome 錯誤頁／unified log。
-- 發布：manifest version → package → ZIP 根目錄／排除檔 → checksum → 隔離 Load unpacked。
+- 草稿重複：composer scope → 真 editor selector → editor ID → `thread` → Markdown。
+- 串文缺則：inputs 順序 → `readComposerContent()` → draft／publish data → `thread_count`／逐則 fence。
+- 格式損壞：frontmatter 邊界 → `YAML.safe_load` → dynamic fence → Host 寫入後讀回。
+- Threads 圖片：REST endpoint 命中 → forwarded response → `parseThreadsCreate()` → CDN download → Vault binary → Markdown；文字 fallback 成功不代表 API 攔截成功。
+- 其他圖片：parser media → CDN permission → binary PUT／Content-Type → 相對連結 → queue marker。
+- Popup 刪除：tracked path → message → framed Host response → 實體檔 → storage／UI。
+- Native Host：ping → 原始碼／安裝檔版本 → framed request → stderr → Chrome／unified log。
+- 發布：manifest version → tag → CI → Release assets／checksum → Web Store package → 隔離安裝。
