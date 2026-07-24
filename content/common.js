@@ -406,18 +406,20 @@ var SP2O = (function () {
       const api = parseResponse(msg.responseText);
       if (!api) return;
 
-      if (!pendingPost && Date.now() - lastFlushAt < THREAD_WINDOW) {
-        if (fallbackBase) {
+      // 沒有進行中的發佈時，只接受「備援剛送出、仍在時窗內」的遲到修正；
+      // 其餘一律忽略，避免頁面上任何腳本偽造 API 回應觸發未經授權的存檔。
+      if (!pendingPost) {
+        if (fallbackBase && Date.now() - lastFlushAt < THREAD_WINDOW) {
           // 備援已先送出（例如網路慢、API 回應晚於 8 秒時限）：
           // 沿用原 timestamp 重送，background 會產生同一檔名覆寫，修正備援存檔的 url/media
           console.log(LOG, label + ': 收到遲到的 API 回應，修正備援存檔', api.url);
           pendingPost = fallbackBase;
           fallbackBase = null;
           flushPending(api);
-          return;
+        } else {
+          // 串文後續回應、時窗外或未對應發佈的回應都不建檔
+          console.log(LOG, label + ': 忽略未對應發佈的 API 回應', api.url);
         }
-        // 串文會連續回傳多則（第 2 則起是接續回覆），只用第一則建檔
-        console.log(LOG, label + ': 忽略串文後續回應', api.url);
         return;
       }
 
