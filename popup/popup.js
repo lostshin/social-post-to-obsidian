@@ -6,6 +6,7 @@ const mediaPathInput = document.getElementById('mediaPath');
 const storageModeSelect = document.getElementById('storageMode');
 const directSettings = document.getElementById('directSettings');
 const restSettings = document.getElementById('restSettings');
+const httpWarning = document.getElementById('httpWarning');
 const chooseVaultBtn = document.getElementById('chooseVaultBtn');
 const vaultName = document.getElementById('vaultName');
 const settingsPanel = document.getElementById('settingsPanel');
@@ -49,6 +50,13 @@ function updateModeUI() {
   directSettings.hidden = !native;
   restSettings.hidden = native;
   testBtn.textContent = native ? '檢查 Helper' : '測試連線';
+  updateHttpWarning();
+}
+
+// REST 模式選非 27124（HTTPS）埠時，提醒 API Key 會以 HTTP 明文送出
+function updateHttpWarning() {
+  const isRest = storageModeSelect.value !== 'native';
+  httpWarning.hidden = !(isRest && readPort() !== 27124);
 }
 
 async function getNativeStatus() {
@@ -75,6 +83,8 @@ async function loadSettings() {
   }
 
   if (settings.vaultName) vaultName.textContent = settings.vaultName;
+
+  updateHttpWarning();
 
   if (storageModeSelect.value === 'native') {
     try {
@@ -515,6 +525,7 @@ toggleApiKey.addEventListener('click', toggleApiKeyVisibility);
 chooseVaultBtn.addEventListener('click', chooseVault);
 clearDraftsBtn.addEventListener('click', clearAutoDrafts);
 storageModeSelect.addEventListener('change', updateModeUI);
+portInput.addEventListener('input', updateHttpWarning);
 document.addEventListener('scroll', () => hidePreview(), true);
 window.addEventListener('focus', async () => {
   await syncVaultActivity();

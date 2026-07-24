@@ -80,6 +80,8 @@
               <input type="number" id="port" value="27123" min="1" max="65535" inputmode="numeric">
               <small>27123 / 27124</small>
             </div>
+
+            <p id="httpWarning" class="http-warning" hidden>⚠ 目前為 HTTP 明文傳輸，API Key 會以未加密方式送出。建議改用 27124（HTTPS）以加密連線。</p>
           </div>
 
           <div class="form-group common-path-group">
