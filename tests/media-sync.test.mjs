@@ -667,6 +667,23 @@ assert.match(formattedThreadMarkdown, /## 串文內容\n\n### 1 \/ 2\n\n```\n串
 assert.match(formattedThreadMarkdown, /### 2 \/ 2\n\n```\n串文第二則\n```/);
 assert.match(formattedThreadMarkdown, /> \[!quote\] 引用貼文/);
 
+// F2: 引用內容（他人撰寫）的 Markdown/HTML 注入必須逸出，不得渲染成遠端圖片或 Obsidian 嵌入
+const maliciousQuoteMarkdown = background.context.generateMarkdown({
+  content: '我的貼文',
+  platform: 'x',
+  url: 'https://x.com/author/status/1',
+  timestamp: '2026-07-18T11:00:00+08:00',
+  quoted: {
+    author: 'attacker',
+    authorName: 'attacker',
+    content: '![x](https://evil.example/track.png)\n<img src="https://evil.example/2.png">\n![[secret.png]]',
+    url: 'https://x.com/attacker/status/2'
+  }
+});
+assert.doesNotMatch(maliciousQuoteMarkdown, /<img/i);
+assert.doesNotMatch(maliciousQuoteMarkdown, /!\[x\]\(https:\/\/evil/);
+assert.doesNotMatch(maliciousQuoteMarkdown, /!\[\[secret/);
+
 const singlePostMarkdown = background.context.generateMarkdown(postData);
 assert.match(singlePostMarkdown, /## 貼文內容\n\n```\n圖片同步測試\n```/);
 

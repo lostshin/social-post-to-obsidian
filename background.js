@@ -810,10 +810,15 @@ function generateMarkdown(data, mediaResults = []) {
 
   // 如果有引用，加入引用區塊
   if (data.quoted && data.quoted.content) {
-    const quotedLines = data.quoted.content.split('\n').map(line => '> ' + line).join('\n');
     const quotedAuthor = data.quoted.url
       ? `[@${data.quoted.author}](<${markdownLinkTarget(data.quoted.url)}>)`
       : `@${data.quoted.author}`;
+    // 引用內容由他人撰寫：逸出會觸發遠端抓取或注入的 Markdown/HTML 構件
+    // （圖片、連結、HTML、Obsidian 嵌入、code span），同時保留 callout 散文外觀
+    const quotedLines = escapeQuotedMarkdown(data.quoted.content)
+      .split('\n')
+      .map(line => '> ' + line)
+      .join('\n');
     sections.push(`> [!quote] 引用貼文\n> ${quotedAuthor}\n>\n${quotedLines}`);
   }
 
@@ -851,6 +856,16 @@ function generateFilename(data) {
 
 function escapeMarkdownAlt(text) {
   return String(text || '圖片').replace(/[\[\]\\]/g, '\\$&');
+}
+
+// 逸出他人撰寫的引用內容：中和圖片／連結／HTML／Obsidian 嵌入／code span，
+// 保留 callout 散文外觀（裸網址仍會被 Obsidian 自動連結，屬可接受風險）
+function escapeQuotedMarkdown(text) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/[\\`\[\]]/g, '\\$&');
 }
 
 // 格式化日期時間 (YYYY-MM-DD HH:mm)
